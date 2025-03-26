@@ -17,7 +17,7 @@ bot = commands.Bot(command_prefix='/', intents=intents)
 
 commands_list = "/coin : Flip a coin\n"
 commands_list += "/dice : Roll a dice\n"
-commands_list += "/mine : Mine a SSAL COIN"
+commands_list += "/mine : Mine a SSAL COIN\n"
 commands_list += "/pick [choice1] [choice2] [choice3] ... : Pick a random choice\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 
