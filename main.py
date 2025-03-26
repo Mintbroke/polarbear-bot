@@ -60,7 +60,7 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
     await interaction.channel.send(f"{user.mention} {message}")
 
 @bot.tree.command(name="mine", description="/mine")
-async def remind(interaction: discord.Interaction):
+async def mine(interaction: discord.Interaction):
     ssal = random.randint(1, 100)
     if(ssal == 69):
         ssal_coins[interaction.user] += 1
