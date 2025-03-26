@@ -44,14 +44,14 @@ async def dice(interaction: discord.Interaction):
 async def pick(interaction: discord.Interaction, options: str):
     options_list = options.split()
     await interaction.response.send_message(f"choices: {', '.join(options_list)}\nbot picks: {random.choice(options_list)}")
-    #await interaction.channel.send(f"Bot picks: {random.choice(options_list)}")
+    #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
 async def remind(interaction: discord.Interaction, user: discord.Member, delay: int, message: str):
-    await interaction.channel.send(f"Bot will remind {user.mention} in {delay} minutes: {message}")
+    await interaction.response.send_message(f"Bot will remind {user.mention} in {delay} minutes: {message}")
     await asyncio.sleep(delay * 60)    
-    await interaction.response.send_message(f"{user.mention} {message}")
+    await interaction.followup.send(f"{user.mention} {message}")
 
 if __name__ == '__main__':
     keep_alive()
