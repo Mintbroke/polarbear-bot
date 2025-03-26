@@ -49,9 +49,9 @@ async def pick(interaction: discord.Interaction, options: str):
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
 async def remind(interaction: discord.Interaction, user: discord.Member, delay: int, message: str):
-    await interaction.response.send_message(f"Bot will remind {user.mention} in {delay} minutes: {message}")
+    await interaction.channel.send(f"Bot will remind {user.mention} in {delay} minutes: {message}")
     await asyncio.sleep(delay * 60)    
-    await interaction.channel.send(f"{user.mention} {message}")
+    await interaction.response.send_message(f"{user.mention} {message}")
 
 if __name__ == '__main__':
     keep_alive()
