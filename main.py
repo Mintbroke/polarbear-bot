@@ -24,6 +24,22 @@ commands_list += "/remind [user] [time(minute)] [message] : Ping user with messa
 # ssal coin dictionary
 ssal_coins = defaultdict(int)
 
+def load_ssal_coins():
+    global ssal_coins
+    with open("ssal_coins.txt", "r", encoding="utf-8") as file:
+        for line in file:
+            # Strip whitespace and split the line into key and value.
+            # This assumes each line is formatted like "user: coins"
+            userid, coins = line.strip().split(": ")
+            ssal_coins[userid] = int(coins)
+
+def save_ssal_coins():
+    global ssal_coins
+    with open("ssal_coins.txt", "w", encoding="utf-8") as file:
+        # Iterate through the defaultdict items and write each key-value pair
+        for userid, coins in ssal_coins.items():
+            file.write(f"{userid}: {coins}\n")
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
@@ -61,22 +77,23 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
 
 @bot.tree.command(name="mine", description="/mine")
 async def mine(interaction: discord.Interaction):
-    ssal = random.randint(1, 100)
+    ssal = random.randint(1, 2)
+    userid = str(interaction.user.id)
     if(ssal == 69):
-        ssal_coins[interaction.user] += 1
+        ssal_coins[userid] += 1
+        save_ssal_coins()
         await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
-                                                f"Your current ssal coins: {ssal_coins[interaction.user]}") #party popper
+                                                f"Your current ssal coins: {ssal_coins[userid]}") #party popper
     else:
         await interaction.response.send_message(f"Unlucky U, YOU ARE NOT THE TRUE SSALSSOONGYEE\n" \
-                                                f"Your current ssal coins: {ssal_coins[interaction.user]}")
-
-
+                                                f"Your current ssal coins: {ssal_coins[userid]}")
 
 
 if __name__ == '__main__':
     keep_alive()
     
     # Run the bot using the token from an environment variable
+    load_ssal_coins
     bot.run(os.getenv('DISCORD_TOKEN'))
 
 
