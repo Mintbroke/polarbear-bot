@@ -79,7 +79,7 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
 async def mine(interaction: discord.Interaction):
     ssal = random.randint(1, 2)
     userid = str(interaction.user.id)
-    if(ssal == 69):
+    if(ssal == 1):
         ssal_coins[userid] += 1
         save_ssal_coins()
         await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
