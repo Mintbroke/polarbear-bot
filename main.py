@@ -9,6 +9,8 @@ import threading
 import psycopg2
 
 from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from web import keep_alive
 
@@ -46,14 +48,7 @@ conn = psycopg2.connect(os.getenv("DB_URL"))
 
 def load_ssal_coins():
     global ssal_coins
-    '''
-    with open("ssal_coins.txt", "r", encoding="utf-8") as file:
-        for line in file:
-            # Strip whitespace and split the line into key and value.
-            # This assumes each line is formatted like "user: coins"
-            userid, coins = line.strip().split(": ")
-            ssal_coins[userid] = int(coins)
-    '''
+
     with conn.cursor() as cur:
         load_query = """
             SELECT id, coins, daily_count, last_mined, crown_chance, crown_count
@@ -138,9 +133,10 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
 @bot.tree.command(name="mine", description="/mine")
 async def mine(interaction: discord.Interaction):
     userid = str(interaction.user.id)
-    if(ssal_coins[userid]["last_mined"] != str(date.today())):
+    current_date = str(datetime.now(ZoneInfo("America/Los_Angeles")).date())
+    if(ssal_coins[userid]["last_mined"] != current_date):
         ssal_coins[userid]["daily_count"] = 0
-        ssal_coins[userid]["last_mined"] = str(date.today())
+        ssal_coins[userid]["last_mined"] = current_date
 
     if(ssal_coins[userid]["daily_count"] < DAILY_LIMIT):
         ssal_coins[userid]["daily_count"] += 1
