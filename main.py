@@ -14,8 +14,18 @@ from zoneinfo import ZoneInfo
 
 from web import keep_alive
 
-DAILY_LIMIT = 50
+#############################################################################################################
+#-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
+# daily mine limit
+DAILY_LIMIT = 20
+
+# message for /list
+commands_list = "/coin : Flip a coin\n"
+commands_list += "/dice : Roll a dice\n"
+commands_list += "/mine : Mine a SSAL COIN\n"
+commands_list += "/pick [choice1] [choice2] [choice3] ... : Pick a random choice\n"
+commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 
 # Create an intents object
 intents = discord.Intents.default()
@@ -23,12 +33,6 @@ intents.message_content = True  # Enable message content intent if necessary
 
 # Create bot instance
 bot = commands.Bot(command_prefix='/', intents=intents)
-
-commands_list = "/coin : Flip a coin\n"
-commands_list += "/dice : Roll a dice\n"
-commands_list += "/mine : Mine a SSAL COIN\n"
-commands_list += "/pick [choice1] [choice2] [choice3] ... : Pick a random choice\n"
-commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 
 def default_value():
     return {"coins" : 0, 
@@ -40,12 +44,18 @@ def default_value():
 # ssal coin dictionary
 ssal_coins = defaultdict(default_value)
 
+# thread 
 lock = threading.Lock()
 
 # database
 print(os.getenv("DB_URL"))
 conn = psycopg2.connect(os.getenv("DB_URL"))
 
+#-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
+#############################################################################################################
+
+#############################################################################################################
+#-------------------------------------------DATABASE-LOAD-SAVE----------------------------------------------#
 def load_ssal_coins():
     global ssal_coins
 
@@ -93,6 +103,11 @@ def save_ssal_coins(userid : str):
         conn.commit()
         print(f"User with id {userid} updated successfully")
 
+#-------------------------------------------DATABASE-LOAD-SAVE----------------------------------------------#
+#############################################################################################################
+
+#############################################################################################################
+#---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
 
 @bot.event
 async def on_ready():
@@ -154,14 +169,9 @@ async def mine(interaction: discord.Interaction):
     else:
         await interaction.response.send_message(f"YOU HAVE REACHED THE DAILY LIMIT OF {DAILY_LIMIT} REQUESTS")
 
-"""
-def default_value():
-    return {"coins" : 0, 
-            "daily_count" : 0, 
-            "last_mined" : "2000-01-01", 
-            "crown_chance" : 1, 
-            "crown_count" : 0}
-"""
+#---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
+# #############################################################################################################
+
 
 if __name__ == '__main__':
     keep_alive()
@@ -169,5 +179,7 @@ if __name__ == '__main__':
     # Run the bot using the token from an environment variable
     load_ssal_coins()
     bot.run(os.getenv('DISCORD_TOKEN'))
+
+    conn.close()
 
 
