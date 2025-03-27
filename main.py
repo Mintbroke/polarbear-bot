@@ -5,8 +5,15 @@ import os
 import random
 import asyncio
 from collections import defaultdict
+import threading
+import psycopg2
+
+from datetime import date
 
 from web import keep_alive
+
+DAILY_LIMIT = 50
+
 
 # Create an intents object
 intents = discord.Intents.default()
@@ -21,24 +28,74 @@ commands_list += "/mine : Mine a SSAL COIN\n"
 commands_list += "/pick [choice1] [choice2] [choice3] ... : Pick a random choice\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 
+def default_value():
+    return {"coins" : 0, 
+            "daily_count" : 0, 
+            "last_mined" : "2000-01-01", 
+            "crown_chance" : 1, 
+            "crown_count" : 0}
+
 # ssal coin dictionary
-ssal_coins = defaultdict(int)
+ssal_coins = defaultdict(default_value)
+
+lock = threading.Lock()
+
+# database
+conn = psycopg2.connect(os.getenv("DB_URL"))
 
 def load_ssal_coins():
     global ssal_coins
+    '''
     with open("ssal_coins.txt", "r", encoding="utf-8") as file:
         for line in file:
             # Strip whitespace and split the line into key and value.
             # This assumes each line is formatted like "user: coins"
             userid, coins = line.strip().split(": ")
             ssal_coins[userid] = int(coins)
+    '''
+    with conn.cursor() as cur:
+        load_query = """
+            SELECT id, coins, daily_count, last_mined, crown_chance, crown_count
+            FROM ssal;
+        """
+        cur.execute(load_query)
+        rows = cur.fetchall()
 
-def save_ssal_coins():
+        for row in rows:
+            userid, coins, daily_count, last_mined, crown_chance, crown_count = row
+            ssal_coins[userid] = {
+                "coins": coins,
+                "daily_count": daily_count,
+                "last_mined": str(last_mined),
+                "crown_chance": crown_chance,
+                "crown_count": crown_count
+            }
+        print(f"ssal loaded:\n{ssal_coins}")
+
+
+def save_ssal_coins(userid : str):
     global ssal_coins
-    with open("ssal_coins.txt", "w", encoding="utf-8") as file:
-        # Iterate through the defaultdict items and write each key-value pair
-        for userid, coins in ssal_coins.items():
-            file.write(f"{userid}: {coins}\n")
+
+    user = ssal_coins[userid]
+    with conn.cursor() as cur:
+        save_query = """
+            INSERT INTO ssal (id, coins, daily_count, last_mined, crown_chance, crown_count)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE
+            SET coins = EXCLUDED.coins,
+                daily_count = EXCLUDED.daily_count,
+                last_mined = EXCLUDED.last_mined,
+                crown_chance = EXCLUDED.crown_chance,
+                crown_count = EXCLUDED.crown_count;
+        """
+        cur.execute(save_query, (user["coins"], 
+                                 user["daily_count"], 
+                                 user["last_mined"], 
+                                 user["crown_chance"], 
+                                 user["crown_count"]))
+        conn.commit()
+        print(f"User with id {userid} updated successfully")
+
 
 @bot.event
 async def on_ready():
@@ -75,25 +132,43 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
     await asyncio.sleep(delay * 60)    
     await interaction.channel.send(f"{user.mention} {message}")
 
+# mine: /mine
 @bot.tree.command(name="mine", description="/mine")
 async def mine(interaction: discord.Interaction):
-    ssal = random.randint(1, 2)
     userid = str(interaction.user.id)
-    if(ssal == 1):
-        ssal_coins[userid] += 1
-        save_ssal_coins()
-        await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
-                                                f"Your current ssal coins: {ssal_coins[userid]}") #party popper
-    else:
-        await interaction.response.send_message(f"Unlucky U, YOU ARE NOT THE TRUE SSALSSOONGYEE\n" \
-                                                f"Your current ssal coins: {ssal_coins[userid]}")
+    if(ssal_coins[userid]["last_mined"] != str(date.today())):
+        ssal_coins[userid]["daily_count"] = 0
+        ssal_coins[userid]["last_mined"] = str(date.today())
 
+    if(ssal_coins[userid]["daily_count"] < DAILY_LIMIT):
+        ssal_coins[userid]["daily_count"] += 1
+        ssal = random.randint(1, 10)
+        if(ssal == 1):
+            ssal_coins[userid]["coins"] += 1
+            with lock:
+                save_ssal_coins()
+            await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
+                                                    f"Your current ssal coins: {ssal_coins[userid]}") #party popper
+        else:
+            await interaction.response.send_message(f"UNLUCKY U, YOU ARE NOT THE TRUE SSALSSOONGYEE\n" \
+                                                    f"Your current ssal coins: {ssal_coins[userid]}")
+    else:
+        await interaction.response.send_message(f"YOU HAVE REACHED THE DAILY LIMIT OF {DAILY_LIMIT} REQUESTS")
+
+"""
+def default_value():
+    return {"coins" : 0, 
+            "daily_count" : 0, 
+            "last_mined" : "2000-01-01", 
+            "crown_chance" : 1, 
+            "crown_count" : 0}
+"""
 
 if __name__ == '__main__':
     keep_alive()
     
     # Run the bot using the token from an environment variable
-    load_ssal_coins
+    load_ssal_coins()
     bot.run(os.getenv('DISCORD_TOKEN'))
 
 
