@@ -41,6 +41,7 @@ ssal_coins = defaultdict(default_value)
 lock = threading.Lock()
 
 # database
+print(os.getenv("DB_URL"))
 conn = psycopg2.connect(os.getenv("DB_URL"))
 
 def load_ssal_coins():
