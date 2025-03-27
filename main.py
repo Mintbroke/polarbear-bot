@@ -177,10 +177,12 @@ async def mine(interaction: discord.Interaction):
     else:
         await interaction.response.send_message(f"YOU HAVE REACHED THE DAILY LIMIT OF {DAILY_LIMIT} REQUESTS")
 
+# stats: /stats
 @bot.tree.command(name="stats", description="/stats")
 async def stats(interaction: discord.Interaction):
     await interaction.response.send_message(f"{interaction.user.mention} \n{ssal_coins[str(interaction.user.id)]}")
 
+# leaderboard: /leaderboard
 @bot.tree.command(name="leadedrboard", description="/leaderboard")
 async def leaderboard(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -193,11 +195,10 @@ async def leaderboard(interaction: discord.Interaction):
     
     await interaction.followup.send(f"{message}")
 
+# refresh: /refresh
 @bot.tree.command(name="refresh", description="/refresh")
 async def refresh(interaction: discord.Interaction):
     await interaction.response.defer()
-    for i in ssal_coins:
-        save_ssal_coins(i)
     load_ssal_coins()
     await interaction.followup.send(f"Database has been refreshed!")
 
