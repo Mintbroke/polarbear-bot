@@ -155,7 +155,7 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
 @bot.tree.command(name="mine", description="/mine")
 async def mine(interaction: discord.Interaction):
     userid = str(interaction.user.id)
-    ssal_coins[userid]["username"] = str(interaction.user.name)
+    ssal_coins[userid]["username"] = str(interaction.user.display_name)
     current_date = str(datetime.now(ZoneInfo("America/Los_Angeles")).date())
     if(ssal_coins[userid]["last_mined"] != current_date):
         ssal_coins[userid]["daily_count"] = 0
