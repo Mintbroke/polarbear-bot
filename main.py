@@ -176,15 +176,16 @@ async def mine(interaction: discord.Interaction):
 
 @bot.tree.command(name="stats", description="/stats")
 async def stats(interaction: discord.Interaction):
-    await interaction.response.send_message(f"{interaction.user.mention} {ssal_coins[interaction.user.id]}")
+    await interaction.response.send_message(f"{interaction.user.mention} \n{ssal_coins[interaction.user.id]}")
 
 @bot.tree.command(name="leadedrboard", description="/leaderboard")
 async def leaderboard(interaction: discord.Interaction):
+    await interaction.response.defer()
     sorted_ssal_coins = sorted(ssal_coins.items(), key=lambda user: user[1]["coins"], reverse=True)
     message = f"LEADERBOARD: \n"
     for index, user in enumerate(sorted_ssal_coins):
         message += f"{index + 1}. {user["username"]}: {user["coins"]}\n"
-    await interaction.response.send_message(f"{message}")
+    await interaction.followup.send(f"{message}")
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
 # #############################################################################################################
