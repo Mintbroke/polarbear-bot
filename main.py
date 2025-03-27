@@ -184,7 +184,7 @@ async def leaderboard(interaction: discord.Interaction):
     sorted_ssal_coins = sorted(ssal_coins.items(), key=lambda user: user[1]["coins"], reverse=True)
     message = f"LEADERBOARD: \n"
     for index, user in enumerate(sorted_ssal_coins):
-        message += f"{index + 1}. {user["username"]}: {user["coins"]}\n"
+        message += f"{index + 1}. {user[1]["username"]}: {user[1]["coins"]}\n"
     await interaction.followup.send(f"{message}")
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
