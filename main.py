@@ -143,11 +143,11 @@ async def mine(interaction: discord.Interaction):
 
     if(ssal_coins[userid]["daily_count"] < DAILY_LIMIT):
         ssal_coins[userid]["daily_count"] += 1
-        ssal = random.randint(1, 10)
+        ssal = random.randint(1, 2)
         if(ssal == 1):
             ssal_coins[userid]["coins"] += 1
             with lock:
-                save_ssal_coins()
+                save_ssal_coins(userid)
             await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
                                                     f"Your current ssal coins: {ssal_coins[userid]}") #party popper
         else:
