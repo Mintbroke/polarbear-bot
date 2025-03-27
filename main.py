@@ -27,7 +27,7 @@ commands_list += "/mine : Mine a SSAL COIN\n"
 commands_list += "/stats : Check your stats\n"
 commands_list += "/leaderboard : Check the leaderboard\n"
 commands_list += "/refresh : Load the newest Database\n"
-commands_list += "/pick [choice1] [choice2] [choice3] ... : Pick a random choice\n"
+commands_list += "/pick [choice1, choice2, choice3, ...] : Pick a random choice\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 
 # Create an intents object
@@ -137,9 +137,9 @@ async def dice(interaction: discord.Interaction):
     await interaction.response.send_message(f"bot rolls: {random.randint(1, 6)}")
 
 # random choice: /pick [choice1 choice2 choice3 ...]
-@bot.tree.command(name="pick", description="/pick [choice1 choice2 choice3 ...]")
+@bot.tree.command(name="pick", description="/pick [choice1, choice2, choice3, ...]")
 async def pick(interaction: discord.Interaction, options: str):
-    options_list = options.split()
+    options_list = options.split(", ")
     await interaction.response.send_message(f"choices: {', '.join(options_list)}\nbot picks: {random.choice(options_list)}")
     #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
 
