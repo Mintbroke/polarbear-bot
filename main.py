@@ -24,6 +24,8 @@ DAILY_LIMIT = 20
 commands_list = "/coin : Flip a coin\n"
 commands_list += "/dice : Roll a dice\n"
 commands_list += "/mine : Mine a SSAL COIN\n"
+commands_list += "/stats : Check your stats\n"
+commands_list += "/leaderboard : Check the leaderboard\n"
 commands_list += "/pick [choice1] [choice2] [choice3] ... : Pick a random choice\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 
@@ -61,15 +63,16 @@ def load_ssal_coins():
 
     with conn.cursor() as cur:
         load_query = """
-            SELECT id, coins, daily_count, last_mined, crown_chance, crown_count
+            SELECT id, username, coins, daily_count, last_mined, crown_chance, crown_count
             FROM ssal;
         """
         cur.execute(load_query)
         rows = cur.fetchall()
 
         for row in rows:
-            userid, coins, daily_count, last_mined, crown_chance, crown_count = row
+            userid, username, coins, daily_count, last_mined, crown_chance, crown_count = row
             ssal_coins[userid] = {
+                "username": username,
                 "coins": coins,
                 "daily_count": daily_count,
                 "last_mined": str(last_mined),
@@ -85,23 +88,25 @@ def save_ssal_coins(userid : str):
     user = ssal_coins[userid]
     with conn.cursor() as cur:
         save_query = """
-            INSERT INTO ssal (id, coins, daily_count, last_mined, crown_chance, crown_count)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO ssal (id, username, coins, daily_count, last_mined, crown_chance, crown_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE
-            SET coins = EXCLUDED.coins,
+            SET username = EXCLUDED.username,
+                coins = EXCLUDED.coins,
                 daily_count = EXCLUDED.daily_count,
                 last_mined = EXCLUDED.last_mined,
                 crown_chance = EXCLUDED.crown_chance,
                 crown_count = EXCLUDED.crown_count;
         """
         cur.execute(save_query, (userid,
+                                 user["username"],
                                  user["coins"], 
                                  user["daily_count"], 
                                  user["last_mined"], 
                                  user["crown_chance"], 
                                  user["crown_count"]))
         conn.commit()
-        print(f"User with id {userid} updated successfully")
+        print(f"User {user["username"]} with id {userid} updated successfully")
 
 #-------------------------------------------DATABASE-LOAD-SAVE----------------------------------------------#
 #############################################################################################################
@@ -169,9 +174,20 @@ async def mine(interaction: discord.Interaction):
     else:
         await interaction.response.send_message(f"YOU HAVE REACHED THE DAILY LIMIT OF {DAILY_LIMIT} REQUESTS")
 
+@bot.tree.command(name="stats", description="/stats")
+async def stats(interaction: discord.Interaction):
+    await interaction.response.send_message(f"{interaction.user.mention} {ssal_coins[interaction.user.id]}")
+
+@bot.tree.command(name="leadedrboard", description="/leaderboard")
+async def leaderboard(interaction: discord.Interaction):
+    sorted_ssal_coins = sorted(ssal_coins.items(), key=lambda user: user[1]["coins"], reverse=True)
+    message = f"LEADERBOARD: \n"
+    for index, user in enumerate(sorted_ssal_coins):
+        message += f"{index + 1}. {user["username"]}: {user["coins"]}\n"
+    await interaction.response.send_message(f"{message}")
+
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
 # #############################################################################################################
-
 
 if __name__ == '__main__':
     keep_alive()
