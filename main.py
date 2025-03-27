@@ -89,7 +89,8 @@ def save_ssal_coins(userid : str):
                 crown_chance = EXCLUDED.crown_chance,
                 crown_count = EXCLUDED.crown_count;
         """
-        cur.execute(save_query, (user["coins"], 
+        cur.execute(save_query, (userid,
+                                 user["coins"], 
                                  user["daily_count"], 
                                  user["last_mined"], 
                                  user["crown_chance"], 
