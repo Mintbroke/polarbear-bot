@@ -145,10 +145,10 @@ async def mine(interaction: discord.Interaction):
             ssal_coins[userid]["coins"] += 1
             
             await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
-                                                    f"Your current ssal coins: {ssal_coins[userid]}") #party popper
+                                                    f"Your current ssal coins: \n{ssal_coins[userid]}") #party popper
         else:
             await interaction.response.send_message(f"UNLUCKY U, YOU ARE NOT THE TRUE SSALSSOONGYEE\n" \
-                                                    f"Your current ssal coins: {ssal_coins[userid]}")
+                                                    f"Your current ssal coins: \n{ssal_coins[userid]}")
         with lock:
             save_ssal_coins(userid)
     else:
