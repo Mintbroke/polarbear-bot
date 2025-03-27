@@ -26,6 +26,7 @@ commands_list += "/dice : Roll a dice\n"
 commands_list += "/mine : Mine a SSAL COIN\n"
 commands_list += "/stats : Check your stats\n"
 commands_list += "/leaderboard : Check the leaderboard\n"
+commands_list += "/refresh : Load the newest Database\n"
 commands_list += "/pick [choice1] [choice2] [choice3] ... : Pick a random choice\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 
@@ -191,6 +192,15 @@ async def leaderboard(interaction: discord.Interaction):
         message += f"{index + 1}. {user["username"]}: {user["coins"]} coins\n"
     
     await interaction.followup.send(f"{message}")
+
+@bot.tree.command(name="refresh", description="/refresh")
+async def refresh(interaction: discord.Interaction):
+    await interaction.response.defer()
+    for i in ssal_coins:
+        save_ssal_coins(i)
+    load_ssal_coins()
+    await interaction.followup.send(f"Database has been refreshed!")
+
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
 # #############################################################################################################
