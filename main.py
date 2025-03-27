@@ -37,7 +37,8 @@ intents.message_content = True  # Enable message content intent if necessary
 bot = commands.Bot(command_prefix='/', intents=intents)
 
 def default_value():
-    return {"coins" : 0, 
+    return {"username" : None,
+            "coins" : 0, 
             "daily_count" : 0, 
             "last_mined" : "2000-01-01", 
             "crown_chance" : 1, 
@@ -176,15 +177,16 @@ async def mine(interaction: discord.Interaction):
 
 @bot.tree.command(name="stats", description="/stats")
 async def stats(interaction: discord.Interaction):
-    await interaction.response.send_message(f"{interaction.user.mention} \n{ssal_coins[interaction.user.id]}")
+    await interaction.response.send_message(f"{interaction.user.mention} \n{ssal_coins[str(interaction.user.id)]}")
 
 @bot.tree.command(name="leadedrboard", description="/leaderboard")
 async def leaderboard(interaction: discord.Interaction):
     await interaction.response.defer()
     sorted_ssal_coins = sorted(ssal_coins.items(), key=lambda user: user[1]["coins"], reverse=True)
+    sorted_ssal_coins_dict = dict(sorted_ssal_coins)
     message = f"LEADERBOARD: \n"
-    for index, user in enumerate(sorted_ssal_coins):
-        message += f"{index + 1}. {user[1]["username"]}: {user[1]["coins"]}\n"
+    for index, user in enumerate(sorted_ssal_coins_dict):
+        message += f"{index + 1}. {user["username"]}: {user["coins"]} coins\n"
     await interaction.followup.send(f"{message}")
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
