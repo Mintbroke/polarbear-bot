@@ -107,6 +107,7 @@ def save_ssal_coins(userid : str):
             ON CONFLICT (id) DO UPDATE
             SET username = EXCLUDED.username,
                 coins = EXCLUDED.coins,
+                multiplier = EXCLUDED.multiplier,
                 daily_count = EXCLUDED.daily_count,
                 last_mined = EXCLUDED.last_mined,
                 crown_chance = EXCLUDED.crown_chance,
