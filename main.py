@@ -206,7 +206,7 @@ async def buy(interaction: discord.Interaction, choice: int):
         await interaction.response.send_message(f"INVALID CHOICE")
 
     else:
-        price = ssal_price[ssal_menu[choice]]
+        price = ssal_price[ssal_menu[choice]] * ssal_coins[userid]["multiplier"]
         if(ssal_coins[userid]["coins"] < price):
             await interaction.response.send_message(f"NOT ENOUGH COINS")
         else:
@@ -220,9 +220,10 @@ async def buy(interaction: discord.Interaction, choice: int):
 # menu: /menu
 @bot.tree.command(name="menu", description="/menu")
 async def mine(interaction: discord.Interaction):
+    userid = str(interaction.user.id)
     menu_str = "MENU: \n"
     for index, item in enumerate(ssal_menu):
-        menu_str += f"{index + 1}. {item}: {ssal_price[item]} coins\n"
+        menu_str += f"{index + 1}. {item}: {ssal_price[item] * ssal_coins[userid]["multiplier"]} coins\n"
 
     await interaction.response.send_message(f"{menu_str}")
 
