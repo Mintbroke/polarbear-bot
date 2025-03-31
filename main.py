@@ -40,6 +40,7 @@ bot = commands.Bot(command_prefix='/', intents=intents)
 def default_value():
     return {"username" : None,
             "coins" : 0, 
+            "multiplier" : 1,
             "daily_count" : 0, 
             "last_mined" : "2000-01-01", 
             "crown_chance" : 1, 
@@ -47,6 +48,10 @@ def default_value():
 
 # ssal coin dictionary
 ssal_coins = defaultdict(default_value)
+
+# ssal menu
+ssal_menu = ["ssal_multiplier"]
+ssal_price = {"ssal_multiplier" : 100}
 
 # thread 
 lock = threading.Lock()
@@ -72,10 +77,11 @@ def load_ssal_coins():
         rows = cur.fetchall()
 
         for row in rows:
-            userid, username, coins, daily_count, last_mined, crown_chance, crown_count = row
+            userid, username, coins, multiplier, daily_count, last_mined, crown_chance, crown_count = row
             ssal_coins[userid] = {
                 "username": username,
                 "coins": coins,
+                "multiplier": multiplier,
                 "daily_count": daily_count,
                 "last_mined": str(last_mined),
                 "crown_chance": crown_chance,
@@ -103,6 +109,7 @@ def save_ssal_coins(userid : str):
         cur.execute(save_query, (userid,
                                  user["username"],
                                  user["coins"], 
+                                 user["multiplier"],
                                  user["daily_count"], 
                                  user["last_mined"], 
                                  user["crown_chance"], 
@@ -151,6 +158,13 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
     await asyncio.sleep(delay * 60)    
     await interaction.channel.send(f"{user.mention} {message}")
 
+
+#---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
+#############################################################################################################
+
+#############################################################################################################
+#----------------------------------------------SSAL-MUKING--------------------------------------------------#
+
 # mine: /mine
 @bot.tree.command(name="mine", description="/mine")
 async def mine(interaction: discord.Interaction):
@@ -165,17 +179,46 @@ async def mine(interaction: discord.Interaction):
         ssal_coins[userid]["daily_count"] += 1
         ssal = random.randint(1, 2)
         if(ssal == 1):
-            ssal_coins[userid]["coins"] += 1
+            ssal_coins[userid]["coins"] += 1 * ssal_coins[userid]["multiplier"]
             
             await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
-                                                    f"Your current ssal coins: \n{ssal_coins[userid]}") #party popper
+                                                    f"Stats: \n{ssal_coins[userid]}") # emote: party popper
         else:
             await interaction.response.send_message(f"UNLUCKY U, YOU ARE NOT THE TRUE SSALSSOONGYEE\n" \
-                                                    f"Your current ssal coins: \n{ssal_coins[userid]}")
+                                                    f"Stats: \n{ssal_coins[userid]}")
         with lock:
             save_ssal_coins(userid)
     else:
         await interaction.response.send_message(f"YOU HAVE REACHED THE DAILY LIMIT OF {DAILY_LIMIT} REQUESTS")
+
+# buy: /buy [choice]
+@bot.tree.command(name="buy", description="/buy [choice]")
+async def buy(interaction: discord.Interaction, choice: int):
+    userid = str(interaction.user.id)
+    choice -= 1
+    if(choice not in ssal_menu):
+        await interaction.response.send_message(f"INVALID CHOICE")
+
+    else:
+        price = ssal_price[ssal_menu[choice]]
+        if(ssal_coins[userid]["coins"] < price):
+            await interaction.response.send_message(f"NOT ENOUGH COINS")
+        else:
+            ssal_coins[userid]["coins"] -= price
+            ssal_coins[userid]["multiplier"] *= 2
+            with lock:
+                save_ssal_coins(userid)
+            await interaction.response.send_message(f"{interaction.user.mention} HAS SUCCESSFULLY PURCHASED {ssal_menu[choice]}\n" \
+                                                    f"Stats: {ssal_coins[userid]}")
+
+# menu: /menu
+@bot.tree.command(name="menu", description="/menu")
+async def mine(interaction: discord.Interaction):
+    menu_str = "MENU: \n"
+    for index, item in enumerate(ssal_menu):
+        menu_str += f"{index + 1}. item\n"
+
+    await interaction.response.send_message(f"{menu_str}")
 
 # stats: /stats
 @bot.tree.command(name="stats", description="/stats")
@@ -202,9 +245,8 @@ async def refresh(interaction: discord.Interaction):
     load_ssal_coins()
     await interaction.followup.send(f"Database has been refreshed!")
 
-
-#---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
-# #############################################################################################################
+#----------------------------------------------SSAL-MUKING--------------------------------------------------#
+#############################################################################################################
 
 if __name__ == '__main__':
     keep_alive()
