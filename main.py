@@ -216,7 +216,7 @@ async def buy(interaction: discord.Interaction, choice: int):
 async def mine(interaction: discord.Interaction):
     menu_str = "MENU: \n"
     for index, item in enumerate(ssal_menu):
-        menu_str += f"{index + 1}. {item}\n"
+        menu_str += f"{index + 1}. {item}: {ssal_price[item]} coins\n"
 
     await interaction.response.send_message(f"{menu_str}")
 
