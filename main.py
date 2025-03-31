@@ -21,16 +21,20 @@ from web import keep_alive
 DAILY_LIMIT = 20
 
 # message for /list
-commands_list = "/coin : Flip a coin\n"
+commands_list = "NORMAL COMMANDS: \n"
+commands_list += "/coin : Flip a coin\n"
 commands_list += "/dice : Roll a dice\n"
+commands_list += "/pick [choice1, choice2, choice3, ...] : Pick a random choice\n"
+commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
+
+commands_list += "SSAL COMMANDS: \n"
 commands_list += "/mine : Mine a SSAL COIN\n"
 commands_list += "/menu : Show the shop menu\n"
 commands_list += "/buy [choice] : Buy the corresponding item from menu\n"
 commands_list += "/stats : Check your stats\n"
 commands_list += "/leaderboard : Check the leaderboard\n"
 commands_list += "/refresh : Load the newest Database\n"
-commands_list += "/pick [choice1, choice2, choice3, ...] : Pick a random choice\n"
-commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
+
 
 # Create an intents object
 intents = discord.Intents.default()
