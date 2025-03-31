@@ -70,7 +70,7 @@ def load_ssal_coins():
 
     with conn.cursor() as cur:
         load_query = """
-            SELECT id, username, coins, daily_count, last_mined, crown_chance, crown_count
+            SELECT id, username, coins, multiplier, daily_count, last_mined, crown_chance, crown_count
             FROM ssal;
         """
         cur.execute(load_query)
@@ -96,8 +96,8 @@ def save_ssal_coins(userid : str):
     user = ssal_coins[userid]
     with conn.cursor() as cur:
         save_query = """
-            INSERT INTO ssal (id, username, coins, daily_count, last_mined, crown_chance, crown_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO ssal (id, username, coins, multiplier, daily_count, last_mined, crown_chance, crown_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE
             SET username = EXCLUDED.username,
                 coins = EXCLUDED.coins,
