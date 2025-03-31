@@ -196,7 +196,7 @@ async def mine(interaction: discord.Interaction):
 async def buy(interaction: discord.Interaction, choice: int):
     userid = str(interaction.user.id)
     choice -= 1
-    if(choice not in ssal_menu):
+    if((choice < 0 or choice >= len(ssal_menu)) or ssal_menu[choice] not in ssal_menu):
         await interaction.response.send_message(f"INVALID CHOICE")
 
     else:
@@ -216,7 +216,7 @@ async def buy(interaction: discord.Interaction, choice: int):
 async def mine(interaction: discord.Interaction):
     menu_str = "MENU: \n"
     for index, item in enumerate(ssal_menu):
-        menu_str += f"{index + 1}. item\n"
+        menu_str += f"{index + 1}. {item}\n"
 
     await interaction.response.send_message(f"{menu_str}")
 
