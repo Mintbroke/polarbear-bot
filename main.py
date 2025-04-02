@@ -188,7 +188,7 @@ async def mine(interaction: discord.Interaction):
         if(ssal == 1):
             ssal_coins[userid]["coins"] += 1 * ssal_coins[userid]["multiplier"]
             
-            await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT A SSAL COIN \U0001F389\U0001F389\U0001F389\n" \
+            await interaction.response.send_message(f"\U0001F389\U0001F389\U0001F389 CONGRATULATOINS! {interaction.user.mention} GOT {ssal_coins[userid]["multiplier"]} SSAL COINS \U0001F389\U0001F389\U0001F389\n" \
                                                     f"Stats: \n{ssal_coins[userid]}") # emote: party popper
         else:
             await interaction.response.send_message(f"UNLUCKY U, YOU ARE NOT THE TRUE SSALSSOONGYEE\n" \
