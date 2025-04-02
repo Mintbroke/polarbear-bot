@@ -234,7 +234,7 @@ async def stats(interaction: discord.Interaction):
     await interaction.response.send_message(f"{interaction.user.mention} \n{ssal_coins[str(interaction.user.id)]}")
 
 # leaderboard: /leaderboard
-@bot.tree.command(name="leadedrboard", description="/leaderboard")
+@bot.tree.command(name="leaderboard", description="/leaderboard")
 async def leaderboard(interaction: discord.Interaction):
     await interaction.response.defer()
     sorted_ssal_coins = sorted(ssal_coins.items(), key=lambda user: user[1]["coins"], reverse=True)
