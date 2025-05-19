@@ -1,7 +1,7 @@
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
 
-python web.py
-python main.py
+python3 web.py
+python3 main.py

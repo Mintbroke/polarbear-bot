@@ -120,7 +120,10 @@ def save_ssal_coins(userid : str):
                                  user["daily_count"], 
                                  user["last_mined"], 
                                  user["crown_chance"], 
-                                 user["crown_count"]))
+                                 user["crown_count"]
+                                )
+                    )
+        
         conn.commit()
         print(f"User {user["username"]} with id {userid} updated successfully")
 
