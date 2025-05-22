@@ -7,6 +7,7 @@ import asyncio
 from collections import defaultdict
 import threading
 import psycopg2
+from gtts import gTTS
 
 from datetime import date
 from datetime import datetime
@@ -16,6 +17,8 @@ from web import keep_alive
 
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
+VOICE = False
+VOICE_LOCK = threading.Lock()
 
 # daily mine limit
 DAILY_LIMIT = 20
@@ -26,6 +29,7 @@ commands_list += "/coin : Flip a coin\n"
 commands_list += "/dice : Roll a dice\n"
 commands_list += "/pick [choice1, choice2, choice3, ...] : Pick a random choice\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
+commands_list += "/voice : Switch on/off for message to speech function in vc\n"
 
 commands_list += "\nSSAL COMMANDS: \n"
 commands_list += "/mine : Mine a SSAL COIN\n"
@@ -167,6 +171,47 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
     await interaction.followup.send(f"Bot will remind {user.mention} in {delay} minutes: {message}")
     await asyncio.sleep(delay * 60)    
     await interaction.channel.send(f"{user.mention} {message}")
+
+@bot.tree.command(name="voice", description="/voice")
+async def voice(interaction: discord.Interaction):
+    global VOICE
+    member = interaction.user
+    with VOICE_LOCK:
+        VOICE = not VOICE
+        if(VOICE):
+            if(member.voice):
+                channel = member.voice.channel
+                vc: discord.VoiceClient = interaction.guild.voice_client
+                if vc is None:
+                    vc = await channel.connect()
+                elif vc.channel != channel:
+                    await vc.move_to(channel)
+                await interaction.response.send_message(f"Polarbear bot will now speak on message if sender is in vc!")
+        else:
+            vc: discord.VoiceClient = interaction.guild.voice_client
+            if vc:
+                await vc.disconnect()
+            await interaction.response.send_message("Polarbear bot will no longer play voice on message now!")
+
+@bot.event
+async def on_message(message: discord.Message):
+    if(message.author.bot):
+        return
+    with VOICE_LOCK:
+        member = message.author
+        if(VOICE and member.voice):
+            vc: discord.VoiceClient = message.guild.voice_client
+            message = f"{message.author.display_name} said {message.content}"
+            filename = "voice_message.mp3"
+            tts = gTTS(text=message, lang="en", slow=False)
+            tts.save(filename)
+            if vc.is_playing():
+                vc.stop()
+
+            source = discord.FFmpegPCMAudio(filename)
+            vc.play(source)
+
+
 
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
