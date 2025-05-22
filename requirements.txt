@@ -13,3 +13,4 @@ propcache==0.2.0
 typing-extensions==4.13.0
 yarl==1.15.2
 psycopg2-binary==2.9.6
+gTTS==2.5.4
