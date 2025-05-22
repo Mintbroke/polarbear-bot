@@ -1,4 +1,5 @@
 import discord
+import discord.opus
 from discord import app_commands
 from discord.ext import commands
 import os
@@ -21,6 +22,9 @@ from web import keep_alive
 # vc variables:
 VOICE = False
 VOICE_LOCK = threading.Lock()
+discord.opus.load_opus("/usr/lib/x86_64-linux-gnu/libopus.so")
+
+print(discord.opus.is_loaded())
 
 # daily mine limit
 DAILY_LIMIT = 20
