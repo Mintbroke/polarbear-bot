@@ -1,19 +1,24 @@
 FROM python:3.12-slim
 
-# 1) Install ffmpeg + Opus runtime + dev (so the .so symlink exists)
+# 1) Install ffmpeg, Opus libs, and build tools for PyNaCl (and any other C extensions)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ffmpeg \
-      libopus0 libopus-dev && \
+      libopus0 libopus-dev \
+      libsodium-dev \
+      build-essential \
+      libffi-dev \
+      python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# 2) Install your Python deps
+# 2) Copy & install Python dependencies
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
-# 3) Copy your code
 WORKDIR /app
+RUN pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
+
+# 3) Copy your bot code
 COPY . /app
 
-# 4) Launch your bot
+# 4) Run your bot
 CMD ["python", "main.py"]
