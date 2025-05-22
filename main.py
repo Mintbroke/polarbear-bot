@@ -229,13 +229,13 @@ async def on_message(message: discord.Message):
 def replace_mentions_and_emojis(message):
     content = message.content
     for user in message.mentions:
-        content = content.replace(user.mention, user.display_name)
+        content = content.replace(user.mention, "@"+user.display_name)
 
     for role in message.role_mentions:
-        content = content.replace(role.mention, role.name)
+        content = content.replace(role.mention, "@"+role.name)
 
-    for chan in message.channel_mentions:
-        content = content.replace(chan.mention, chan.name)
+    for channel in message.channel_mentions:
+        content = content.replace(channel.mention, "@"+channel.name)
 
     def _replace_custom(match):
         return match.group("name")
