@@ -22,9 +22,8 @@ from web import keep_alive
 # vc variables:
 VOICE = False
 VOICE_LOCK = threading.Lock()
-discord.opus.load_opus("/usr/lib/x86_64-linux-gnu/libopus.so")
-
 print(discord.opus.is_loaded())
+print(discord.opus.get_opus_version())
 
 # daily mine limit
 DAILY_LIMIT = 20

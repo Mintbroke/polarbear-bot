@@ -1,2 +1,4 @@
+# nixpacks.toml
 [phases.setup]
-aptPkgs = ["ffmpeg", "libopus0"]
+# These are pulled in at build time via apt
+aptPkgs = ["ffmpeg", "libopus0", "libopus-dev"]
