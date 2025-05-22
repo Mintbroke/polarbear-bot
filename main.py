@@ -24,8 +24,11 @@ from web import keep_alive
 VOICE = False
 VOICE_LOCK = threading.Lock()
 
-lib = ctypes.util.find_library("opus")
-discord.opus.load_opus(lib)
+opus_lib = ctypes.util.find_library("opus")
+print("ctypes.util.find_library('opus') →", opus_lib)
+if not opus_lib:
+    opus_lib = "/usr/lib/x86_64-linux-gnu/libopus.so.0"
+discord.opus.load_opus(opus_lib)
 print(discord.opus.is_loaded())
 
 # daily mine limit
