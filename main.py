@@ -214,7 +214,7 @@ async def on_message(message: discord.Message):
         member = message.author
         if(VOICE and member.voice):
             vc: discord.VoiceClient = message.guild.voice_client
-            message = f"{message.author.display_name} said {replace_mentions_and_emojis(message.content)}"
+            message = f"{message.author.display_name} said {replace_mentions_and_emojis(message)}"
             filename = "voice_message.mp3"
             tts = gTTS(text=message, lang="en", slow=False)
             tts.save(filename)
