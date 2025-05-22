@@ -33,6 +33,8 @@ if not opus_lib:
 discord.opus.load_opus(opus_lib)
 print(discord.opus.is_loaded())
 
+EMOJI_RE = re.compile(r'<a?:(?P<name>\w+):\d+>')
+
 # daily mine limit
 DAILY_LIMIT = 20
 
@@ -235,8 +237,9 @@ def replace_mentions_and_emojis(message):
     for chan in message.channel_mentions:
         content = content.replace(chan.mention, chan.name)
 
-    for emo in message.emojis:
-        content = content.replace(str(emo), emo.name)
+    def _replace_custom(match):
+        return match.group("name")
+    content = EMOJI_RE.sub(_replace_custom, content)
 
     demojized = emoji.demojize(content)
     content = re.sub(r':(\w+):', r'\1', demojized)
