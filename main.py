@@ -23,7 +23,6 @@ from web import keep_alive
 VOICE = False
 VOICE_LOCK = threading.Lock()
 print(discord.opus.is_loaded())
-print(discord.opus.get_opus_version())
 
 # daily mine limit
 DAILY_LIMIT = 20
