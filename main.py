@@ -10,6 +10,8 @@ from collections import defaultdict
 import threading
 import psycopg2
 from gtts import gTTS
+import emoji
+import re
 
 from datetime import date
 from datetime import datetime
@@ -212,7 +214,7 @@ async def on_message(message: discord.Message):
         member = message.author
         if(VOICE and member.voice):
             vc: discord.VoiceClient = message.guild.voice_client
-            message = f"{message.author.display_name} said {message.content}"
+            message = f"{message.author.display_name} said {replace_mentions_and_emojis(message.content)}"
             filename = "voice_message.mp3"
             tts = gTTS(text=message, lang="en", slow=False)
             tts.save(filename)
@@ -222,7 +224,24 @@ async def on_message(message: discord.Message):
             source = discord.FFmpegPCMAudio(filename)
             vc.play(source)
 
+def replace_mentions_and_emojis(message):
+    content = message.content
+    for user in message.mentions:
+        content = content.replace(user.mention, user.display_name)
 
+    for role in message.role_mentions:
+        content = content.replace(role.mention, role.name)
+
+    for chan in message.channel_mentions:
+        content = content.replace(chan.mention, chan.name)
+
+    for emo in message.emojis:
+        content = content.replace(str(emo), emo.name)
+
+    demojized = emoji.demojize(content)
+    content = re.sub(r':(\w+):', r'\1', demojized)
+
+    return content
 
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
