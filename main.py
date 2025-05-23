@@ -24,7 +24,7 @@ from web import keep_alive
 
 # vc variables:
 VOICE = False
-VOICE_LOCK = threading.Lock()
+VOICE_LOCK = asyncio.Lock()
 
 opus_lib = ctypes.util.find_library("opus")
 print("ctypes.util.find_library('opus') →", opus_lib)
@@ -191,7 +191,7 @@ async def remind(interaction: discord.Interaction, user: discord.Member, delay: 
 async def voice(interaction: discord.Interaction):
     global VOICE
     member = interaction.user
-    with VOICE_LOCK:
+    async with VOICE_LOCK:
         VOICE = not VOICE
         if(VOICE):
             if(member.voice):
@@ -212,7 +212,7 @@ async def voice(interaction: discord.Interaction):
 async def on_message(message: discord.Message):
     if(message.author.bot):
         return
-    with VOICE_LOCK:
+    async with VOICE_LOCK:
         member = message.author
         if(VOICE and member.voice):
             vc: discord.VoiceClient = message.guild.voice_client
