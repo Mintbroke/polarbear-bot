@@ -50,6 +50,7 @@ commands_list += "/dice : Roll a dice\n"
 commands_list += "/pick [choice1, choice2, choice3, ...] : Pick a random choice\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 commands_list += "/voice : Switch on/off for message to speech function in vc\n"
+commands_list += "/voice_speed : /voice_speed [speed]\n"
 
 commands_list += "\nSSAL COMMANDS: \n"
 commands_list += "/mine : Mine a SSAL COIN\n"
@@ -265,7 +266,7 @@ def replace_mentions_and_emojis(message):
     return content
 
 @bot.tree.command(name="voice_speed", description="/voice_speed [speed]")
-async def pick(interaction: discord.Interaction, speed: float):
+async def change_voice_speed(interaction: discord.Interaction, speed: float):
     async with VOICE_SPEED_LOCK:
         global voice_speed
         voice_speed = speed
