@@ -215,7 +215,7 @@ async def voice(interaction: discord.Interaction):
 
 @bot.event
 async def on_message(d_message: discord.Message):
-    if(message.author.bot):
+    if(d_message.author.bot):
         return
     async with VOICE_LOCK:
         member = d_message.author
