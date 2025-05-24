@@ -27,6 +27,7 @@ from web import keep_alive
 VOICE = False
 VOICE_LOCK = asyncio.Lock()
 VOICE_SPEED_LOCK = asyncio.Lock()
+AUTHOR_LOCK = asyncio.Lock()
 previous_author = None
 voice_speed = 1.5
 
@@ -213,16 +214,18 @@ async def voice(interaction: discord.Interaction):
             await interaction.response.send_message("Polarbear bot will no longer play voice on message now!")
 
 @bot.event
-async def on_message(message: discord.Message):
+async def on_message(d_message: discord.Message):
     if(message.author.bot):
         return
     async with VOICE_LOCK:
-        member = message.author
+        member = d_message.author
         if(VOICE and member.voice):
-            vc: discord.VoiceClient = message.guild.voice_client
+            vc: discord.VoiceClient = d_message.guild.voice_client
             message = ""
             if(member != previous_author):
-                message += f"{message.author.display_name} said"
+                message += f"{d_message.author.display_name} said"
+                async with AUTHOR_LOCK:
+                    previous_author = member
             message += f"{replace_mentions_and_emojis(message)}"
             filename = "voice_message.mp3"
             tts = gTTS(text=message, lang="en", slow=False)
