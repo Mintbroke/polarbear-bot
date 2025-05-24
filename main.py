@@ -10,6 +10,7 @@ from collections import defaultdict
 import threading
 import psycopg2
 from gtts import gTTS
+from pydub import AudioSegment
 import emoji
 import re
 
@@ -25,6 +26,9 @@ from web import keep_alive
 # vc variables:
 VOICE = False
 VOICE_LOCK = asyncio.Lock()
+VOICE_SPEED_LOCK = asyncio.Lock()
+previous_author = None
+voice_speed = 1.5
 
 opus_lib = ctypes.util.find_library("opus")
 print("ctypes.util.find_library('opus') →", opus_lib)
@@ -216,14 +220,24 @@ async def on_message(message: discord.Message):
         member = message.author
         if(VOICE and member.voice):
             vc: discord.VoiceClient = message.guild.voice_client
-            message = f"{message.author.display_name} said {replace_mentions_and_emojis(message)}"
+            message = ""
+            if(member != previous_author):
+                message += f"{message.author.display_name} said"
+            message += f"{replace_mentions_and_emojis(message)}"
             filename = "voice_message.mp3"
             tts = gTTS(text=message, lang="en", slow=False)
             tts.save(filename)
+            sound = AudioSegment.from_file(filename, format="mp3")
+            async with VOICE_SPEED_LOCK:
+                faster = sound._spawn(sound.raw_data, overrides={
+                    "frame_rate": int(sound.frame_rate * voice_speed)
+                }).set_frame_rate(sound.frame_rate)
+            fast_filename = "fast.mp3"
+            faster.export(fast_filename, format="mp3")
             if vc.is_playing():
                 vc.stop()
 
-            source = discord.FFmpegPCMAudio(filename)
+            source = discord.FFmpegPCMAudio(fast_filename)
             vc.play(source)
 
 def replace_mentions_and_emojis(message):
@@ -245,6 +259,13 @@ def replace_mentions_and_emojis(message):
     content = re.sub(r':(\w+):', r'\1', demojized)
 
     return content
+
+@bot.tree.command(name="voice_speed", description="/voice_speed [speed]")
+async def pick(interaction: discord.Interaction, speed: float):
+    async with VOICE_SPEED_LOCK:
+        global voice_speed
+        voice_speed = speed
+        await interaction.response.send_message(f"Polarbear bot voice speed is now: {speed}")
 
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
