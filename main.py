@@ -221,7 +221,7 @@ async def on_message(d_message: discord.Message):
     global previous_author
     async with VOICE_LOCK:
         member = d_message.author
-        if(VOICE and member.voice):
+        if(VOICE):
             vc: discord.VoiceClient = d_message.guild.voice_client
             message = ""
             if(previous_author == None or member != previous_author):
