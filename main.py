@@ -224,7 +224,7 @@ async def on_message(d_message: discord.Message):
             vc: discord.VoiceClient = d_message.guild.voice_client
             message = ""
             if(previous_author == None or member != previous_author):
-                message += f"{d_message.author.display_name} said"
+                message += f"{d_message.author.display_name} said "
                 async with AUTHOR_LOCK:
                     previous_author = member
             message += f"{replace_mentions_and_emojis(d_message)}"
