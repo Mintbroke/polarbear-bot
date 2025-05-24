@@ -217,6 +217,7 @@ async def voice(interaction: discord.Interaction):
 async def on_message(d_message: discord.Message):
     if(d_message.author.bot):
         return
+    global previous_author
     async with VOICE_LOCK:
         member = d_message.author
         if(VOICE and member.voice):
