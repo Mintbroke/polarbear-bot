@@ -227,7 +227,7 @@ async def on_message(d_message: discord.Message):
                 message += f"{d_message.author.display_name} said"
                 async with AUTHOR_LOCK:
                     previous_author = member
-            message += f"{replace_mentions_and_emojis(message)}"
+            message += f"{replace_mentions_and_emojis(d_message)}"
             filename = "voice_message.mp3"
             tts = gTTS(text=message, lang="en", slow=False)
             tts.save(filename)
