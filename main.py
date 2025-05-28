@@ -208,6 +208,8 @@ async def voice(interaction: discord.Interaction):
                 elif vc.channel != channel:
                     await vc.move_to(channel)
                 await interaction.response.send_message(f"Polarbear bot will now speak on message if sender is in vc!")
+            else:
+                await interaction.response.send_message(f"You need to be in vc first!")
         else:
             vc: discord.VoiceClient = interaction.guild.voice_client
             if vc:
