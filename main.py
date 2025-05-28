@@ -198,9 +198,9 @@ async def voice(interaction: discord.Interaction):
     global VOICE
     member = interaction.user
     async with VOICE_LOCK:
-        VOICE = not VOICE
-        if(VOICE):
+        if(not VOICE):
             if(member.voice):
+                VOICE = True
                 channel = member.voice.channel
                 vc: discord.VoiceClient = interaction.guild.voice_client
                 if vc is None:
@@ -211,6 +211,7 @@ async def voice(interaction: discord.Interaction):
             else:
                 await interaction.response.send_message(f"You need to be in vc first!")
         else:
+            VOICE = False
             vc: discord.VoiceClient = interaction.guild.voice_client
             if vc:
                 await vc.disconnect()
