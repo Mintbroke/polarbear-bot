@@ -242,7 +242,7 @@ async def on_message(d_message: discord.Message):
                 }).set_frame_rate(sound.frame_rate)
             fast_filename = "fast.mp3"
             faster.export(fast_filename, format="mp3")
-            if vc.is_playing():
+            if vc and vc.is_playing():
                 vc.stop()
 
             source = discord.FFmpegPCMAudio(fast_filename)
