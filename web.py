@@ -14,4 +14,5 @@ def run():
 
 def keep_alive():
     server = Thread(target=run)
+    print("running keep alive")
     server.start()

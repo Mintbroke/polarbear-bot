@@ -372,9 +372,9 @@ if __name__ == '__main__':
     keep_alive()
     
     # Run the bot using the token from an environment variable
-    load_ssal_coins()
+    #load_ssal_coins()
     bot.run(os.getenv('DISCORD_TOKEN'))
 
-    conn.close()
+    #conn.close()
 
 
