@@ -88,10 +88,11 @@ ssal_price = {"ssal_multiplier" : 100}
 # thread 
 lock = threading.Lock()
 
+'''
 # database
 print(os.getenv("DB_URL"))
 conn = psycopg2.connect(os.getenv("DB_URL"))
-
+'''
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 #############################################################################################################
 '''
