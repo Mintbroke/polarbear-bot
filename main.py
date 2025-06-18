@@ -52,6 +52,7 @@ commands_list += "/remind [user] [time(minute)] [message] : Ping user with messa
 commands_list += "/voice : Switch on/off for message to speech function in vc\n"
 commands_list += "/voice_speed : /voice_speed [speed]\n"
 
+'''
 commands_list += "\nSSAL COMMANDS: \n"
 commands_list += "/mine : Mine a SSAL COIN\n"
 commands_list += "/menu : Show the shop menu\n"
@@ -59,7 +60,7 @@ commands_list += "/buy [choice] : Buy the corresponding item from menu\n"
 commands_list += "/stats : Check your stats\n"
 commands_list += "/leaderboard : Check the leaderboard\n"
 commands_list += "/refresh : Load the newest Database\n"
-
+'''
 
 # Create an intents object
 intents = discord.Intents.default()
@@ -93,7 +94,7 @@ conn = psycopg2.connect(os.getenv("DB_URL"))
 
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 #############################################################################################################
-
+'''
 #############################################################################################################
 #-------------------------------------------DATABASE-LOAD-SAVE----------------------------------------------#
 def load_ssal_coins():
@@ -154,7 +155,7 @@ def save_ssal_coins(userid : str):
 
 #-------------------------------------------DATABASE-LOAD-SAVE----------------------------------------------#
 #############################################################################################################
-
+'''
 #############################################################################################################
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
 
@@ -278,7 +279,7 @@ async def change_voice_speed(interaction: discord.Interaction, speed: float):
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
 #############################################################################################################
-
+'''
 #############################################################################################################
 #----------------------------------------------SSAL-MUKING--------------------------------------------------#
 
@@ -365,7 +366,7 @@ async def refresh(interaction: discord.Interaction):
 
 #----------------------------------------------SSAL-MUKING--------------------------------------------------#
 #############################################################################################################
-
+'''
 if __name__ == '__main__':
     keep_alive()
     
