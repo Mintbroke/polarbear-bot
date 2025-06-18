@@ -213,7 +213,7 @@ async def voice(interaction: discord.Interaction):
         else:
             VOICE = False
             vc: discord.VoiceClient = interaction.guild.voice_client
-            if vc:
+            if vc and vc.is_connected():
                 await vc.disconnect()
             await interaction.response.send_message("Polarbear bot will no longer play voice on message now!")
 
