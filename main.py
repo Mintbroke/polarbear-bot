@@ -41,32 +41,23 @@ aclient = AsyncOpenAI(
     max_retries=0,
 )
 
-async def ensure_model_with_mmap(name: str):
-    async with httpx.AsyncClient(timeout=600.0) as http:
-        # Check if the model exists locally
+async def ensure_model_with_mmap(name: str, timeout_seconds=600):
+    async with httpx.AsyncClient(timeout=timeout_seconds) as http:
+        # Pull if missing
         r = await http.post(f"{ROOT}/api/show", json={"name": name})
         if r.status_code == 404:
             print(f"Model {name} not found locally — pulling...")
             pr = await http.post(f"{ROOT}/api/pull", json={"name": name, "stream": False})
             pr.raise_for_status()
 
-        # Force reload with mmap enabled
-        print(f"Forcing reload of {name} with use_mmap=True...")
-        lr = await http.post(f"{ROOT}/api/load", json={
+        # Warm up with mmap
+        print(f"Warming up {name} with mmap...")
+        g = await http.post(f"{ROOT}/api/generate", json={
             "model": name,
-            "options": {
-                "use_mmap": True,
-                "num_thread": 1,
-                "num_ctx": 512
-            }
+            "prompt": "ok",
+            "stream": False,
+            "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 512}
         })
-        lr.raise_for_status()
-
-        # Quick warmup
-        print("Warming up model with mmap...")
-        g = await http.post(f"{ROOT}/api/generate",
-            json={"model": name, "prompt": "ok", "stream": False,
-                  "options": {"use_mmap": True}})
         print("Warmup response:", g.status_code, g.text[:80])
 
 '''
