@@ -309,7 +309,7 @@ async def chat(msg: discord.Message, message: str):
                 print("generating response with mmap...")
                 g = await http.post(f"{ROOT}/api/generate", json={
                     "model": name,
-                    "prompt": f"{FRIEND_PERSONA}\n\nUser: {message}\nPolarBear:",
+                    "prompt": f"{FRIEND_PERSONA}\n\nUser: {message}",
                     "stream": False,
                     "temperature": 0.9,
                     "top_p": 0.95,
