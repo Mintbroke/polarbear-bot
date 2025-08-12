@@ -34,9 +34,9 @@ aclient = AsyncOpenAI(
     timeout=15.0,  # fail fast if something’s wrong
 )
 
-def testAI():
+async def testAI():
     print("testing AI:")
-    resp = aclient.chat.completions.create(
+    resp = await aclient.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": 'hi'}],
         max_tokens=256,        # keep token count small on CPU
@@ -44,8 +44,6 @@ def testAI():
     )
     text = resp.choices[0].message.content.strip()
     print(text)
-
-testAI()
 
 # vc variables:
 VOICE = False
@@ -407,7 +405,7 @@ async def refresh(interaction: discord.Interaction):
 '''
 if __name__ == '__main__':
     keep_alive()
-    
+    asyncio.run(testAI())
     # Run the bot using the token from an environment variable
     #load_ssal_coins()
     bot.run(os.getenv('DISCORD_TOKEN'))
