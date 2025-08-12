@@ -25,6 +25,8 @@ from openai import AsyncOpenAI
 import os
 import httpx
 import contextlib
+
+from io import BytesIO
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
@@ -241,25 +243,49 @@ async def pick(interaction: discord.Interaction, options: str):
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
     async with ai_lock:
+        print(f"Generating response for: {message}")
         try:
-            print(f"Generating response for: {message}")
             resp = await aclient.chat.completions.create(
                 model=MODEL,
                 messages=[
                     {"role": "system", "content": "Be brief and chill. No prefaces."},
                     {"role": "user", "content": message},
                 ],
-                max_tokens=64,
-                temperature=0.7,
+                temperature=0.6,
                 top_p=0.9,
-                stream=False,
-                extra_body={"keep_alive": "30m", "options": {"num_thread": 2, "num_ctx": 1024}},
+                max_tokens=64,
+                stream=False,  # send only after completion
+                extra_body={"keep_alive": "30m",
+                            "options": {"num_thread": 1, "num_ctx": 512}},
             )
 
             text = (resp.choices[0].message.content or "").strip() or "no content"
-            await msg.reply(text)
+            content = f"{msg.author.mention} {text}"
+
+            if len(content) <= 2000:
+                await msg.reply(
+                    content,
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                )
+            else:
+                # too long for one Discord message → send as file once
+                buf = BytesIO(text.encode("utf-8"))
+                buf.seek(0)
+                await msg.reply(
+                    f"{msg.author.mention} (full response attached)",
+                    file=discord.File(buf, filename="response.txt"),
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                )
+
         except Exception as e:
-            print(f"LLM error: {e}")
+            await msg.reply(
+                f"{msg.author.mention} LLM error: {e}",
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+            )
+
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
