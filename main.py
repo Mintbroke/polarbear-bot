@@ -23,7 +23,7 @@ from web import keep_alive
 from openai import OpenAI
 from openai import AsyncOpenAI
 import os
-
+import httpx
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
@@ -31,19 +31,43 @@ MODEL = "tinyllama:1.1b"
 aclient = AsyncOpenAI(
     base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1"),
     api_key=os.getenv("OPENAI_API_KEY", "ollama"),
-    timeout=15.0,  # fail fast if something’s wrong
+    timeout=httpx.Timeout(300.0, connect=10.0, read=300.0, write=300.0),  # fail fast if something’s wrong
+    max_retries=0,
 )
 
+async def ensure_model(name: str):
+    async with httpx.AsyncClient(timeout=600.0) as http:
+        r = await http.post(f"{ROOT}/api/show", json={"name": name})
+        if r.status_code == 404:
+            pr = await http.post(f"{ROOT}/api/pull", json={"name": name, "stream": False})
+            pr.raise_for_status()
+
 async def testAI():
-    print("testing AI:")
-    resp = await aclient.chat.completions.create(
+    print("testing AI…")
+    await ensure_model(MODEL)
+
+    # quick 1-token warmup via /api/generate (should return fast if OK)
+    async with httpx.AsyncClient(timeout=20.0) as http:
+        g = await http.post(f"{ROOT}/api/generate",
+                            json={"model": MODEL, "prompt": "ok", "stream": False})
+        print("warmup:", g.status_code, g.text[:80])
+
+    # stream tokens so you don't wait for the whole reply
+    stream = await aclient.chat.completions.create(
         model=MODEL,
-        messages=[{"role": "user", "content": 'hi'}],
-        max_tokens=256,        # keep token count small on CPU
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=64,            # keep tiny on CPU
         temperature=0.2,
+        stream=True,
     )
-    text = resp.choices[0].message.content.strip()
-    print(text)
+    out = []
+    async for ch in stream:
+        delta = (ch.choices[0].delta.content or "")
+        if delta:
+            print(delta, end="", flush=True)
+            out.append(delta)
+    print("\n--- done ---")
+    return "".join(out)
 
 # vc variables:
 VOICE = False
