@@ -34,8 +34,8 @@ aclient = AsyncOpenAI(
     timeout=15.0,  # fail fast if something’s wrong
 )
 
-async def testAI():
-    resp = await aclient.chat.completions.create(
+def testAI():
+    resp = aclient.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": 'hi'}],
         max_tokens=256,        # keep token count small on CPU
