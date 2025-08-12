@@ -294,7 +294,7 @@ async def chat(msg: discord.Message, message: str):
                     "stream": False,
                     "temperature": 0.8,
                     "top_p": 0.9,
-                    "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 512}
+                    "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 4096}
                 })
                 data = g.json()
                 print("response:", g.status_code, g.text[:80])
