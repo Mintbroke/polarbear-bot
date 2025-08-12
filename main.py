@@ -20,8 +20,17 @@ from zoneinfo import ZoneInfo
 
 from web import keep_alive
 
+from openai import OpenAI
+import os
+
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
+
+base = os.getenv("BASE_URL", "http://localhost:11434/v1")
+key  = os.getenv("API_KEY", "ollama")
+model = os.getenv("MODEL", "llama3.2:1b")
+
+client = OpenAI(base_url=base, api_key=key)
 
 # vc variables:
 VOICE = False
@@ -186,6 +195,14 @@ async def pick(interaction: discord.Interaction, options: str):
     options_list = options.split(", ")
     await interaction.response.send_message(f"choices: {', '.join(options_list)}\nbot picks: {random.choice(options_list)}")
     #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
+
+@bot.tree.command(name="ask", description="/ask [question]")
+async def ask(interaction: discord.Interaction, question: str):
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role":"user","content":question}]
+    )
+    await interaction.response.send_message(resp.choices[0].message.content)
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")

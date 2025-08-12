@@ -1,0 +1,22 @@
+app = "polarbear-lavalink-broken-breeze-2792"
+primary_region = "lax"
+
+[build]
+image = "fredboat/lavalink:latest"
+
+[env]
+# Lavalink password for secure node access
+LAVALINK_PASSWORD = "replace_with_strong_pass"
+
+# Expose only the Lavalink TCP port (2333)
+[[services]]
+protocol      = "tcp"
+internal_port = 2333
+
+[[services.ports]]
+port = 2333
+
+[[vm]]
+memory   = "1gb"
+cpu_kind = "shared"
+cpus     = 1
