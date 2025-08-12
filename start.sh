@@ -8,7 +8,7 @@ if command -v ollama >/dev/null; then
   for i in {1..60}; do
     curl -fsS http://127.0.0.1:11434/api/tags >/dev/null && break || sleep 1
   done
-  MODEL="${OLLAMA_START_MODEL:-tinyllama:1.1b}"
+  MODEL="${OLLAMA_START_MODEL:-qwen2.5:0.5b-instruct}"
   ollama show "$MODEL" >/dev/null 2>&1 || ollama pull "$MODEL"
 
   # after pulling MODEL in start.sh

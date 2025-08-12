@@ -36,10 +36,15 @@ RUN chmod +x /app/start.sh
 # Keep Ollama private inside the container
 ENV OLLAMA_HOST=127.0.0.1:11434
 # Change the default model if you like (small CPU-friendly ones recommended)
-ENV OLLAMA_START_MODEL=tinyllama:1.1b
+ENV OLLAMA_START_MODEL=qwen2.5:0.5b-instruct
+ENV OLLAMA_NUM_THREADS=2
+ENV OLLAMA_NUM_PARALLEL=1
+ENV OLLAMA_CONTEXT_LENGTH=1024
+ENV OLLAMA_KEEP_ALIVE=30m
+
 
 # If you want models to persist across restarts, mount a volume at /root/.ollama
-# VOLUME ["/root/.ollama"]
+VOLUME ["/root/.ollama"]
 
 # Entrypoint: boot Ollama, wait, pull model if needed, then run your bot
 CMD ["/app/start.sh"]

@@ -27,7 +27,7 @@ import httpx
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
-MODEL = "tinyllama:1.1b"
+MODEL = "qwen2.5:0.5b-instruct"
 BASE  = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
 ROOT  = BASE.rsplit("/v1", 1)[0]
 
@@ -251,7 +251,7 @@ async def ask(interaction: discord.Interaction, message: str):
                 max_tokens=64,       # keep modest on CPU
                 temperature=0.7,
                 stream=True,
-                extra_body={"options": {"num_thread": 2, "num_ctx": 2048}}
+                extra_body={"options": {"num_thread": 2, "num_ctx": 1024}, "keep_alive":"30m"}
             )
             buf, last_edit = "", asyncio.get_event_loop().time()
             async for ch in stream:
