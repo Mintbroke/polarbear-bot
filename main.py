@@ -21,16 +21,18 @@ from zoneinfo import ZoneInfo
 from web import keep_alive
 
 from openai import OpenAI
+from openai import AsyncOpenAI
 import os
 
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
-base = os.getenv("BASE_URL", "http://localhost:11434/v1")
-key  = os.getenv("API_KEY", "ollama")
-model = os.getenv("MODEL", "llama3.2:1b")
-
-client = OpenAI(base_url=base, api_key=key)
+MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3.2:1b")
+aclient = AsyncOpenAI(
+    base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1"),
+    api_key=os.getenv("OPENAI_API_KEY", "ollama"),
+    timeout=30.0,  # fail fast if something’s wrong
+)
 
 # vc variables:
 VOICE = False
@@ -198,11 +200,18 @@ async def pick(interaction: discord.Interaction, options: str):
 
 @bot.tree.command(name="ask", description="/ask [question]")
 async def ask(interaction: discord.Interaction, question: str):
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role":"user","content":question}]
-    )
-    await interaction.response.send_message(resp.choices[0].message.content)
+    await interaction.response.defer(thinking=True)
+    try:
+        resp = await aclient.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=256,        # keep token count small on CPU
+            temperature=0.2,
+        )
+        text = resp.choices[0].message.content.strip()
+        await interaction.followup.send(text)
+    except Exception as e:
+        await interaction.followup.send(f"LLM error: {e}")
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
