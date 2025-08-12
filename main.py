@@ -290,8 +290,9 @@ async def chat(msg: discord.Message, message: str):
                     "top_p": 0.9,
                     "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 512}
                 })
+                data = g.json()
                 print("response:", g.status_code, g.text[:80])
-                content = f"{msg.author.mention} {g.text.strip()}"
+                content = f"{msg.author.mention} {data.get("response", "")}"
 
                 if len(content) <= 2000:
                     await msg.reply(
