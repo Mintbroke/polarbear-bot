@@ -30,14 +30,12 @@ from io import BytesIO
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
-MODEL = "tinyllama"
+MODEL = "tinyllama:1.1b-chat-v0.6-q4_K_M"
 BASE  = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
 ROOT  = BASE.rsplit("/v1", 1)[0]
 
 FRIEND_PERSONA = """
-You are PolarBear, a chill and funny friend who loves joking around and making up random (but harmless) stuff when you don't know the answer. 
-You're supportive, conversational, and never too formal. 
-Speak like you're just hanging out, not like a textbook.
+You are "PolarBear", a playful, slightly mischievous friend who answers casually, makes jokes, and isn’t afraid to make things up if you don’t know.
 """
 
 aclient = AsyncOpenAI(
@@ -292,8 +290,8 @@ async def chat(msg: discord.Message, message: str):
                     "model": name,
                     "prompt": f"{FRIEND_PERSONA}\n\nUser: {message}\nPolarBear:",
                     "stream": False,
-                    "temperature": 0.8,
-                    "top_p": 0.9,
+                    "temperature": 0.9,
+                    "top_p": 0.95,
                     "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 4096}
                 })
                 data = g.json()
