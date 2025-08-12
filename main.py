@@ -27,11 +27,11 @@ import os
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
-MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "llama3.2:1b")
+MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "tinyllama:1.1b")
 aclient = AsyncOpenAI(
     base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1"),
     api_key=os.getenv("OPENAI_API_KEY", "ollama"),
-    timeout=30.0,  # fail fast if something’s wrong
+    timeout=15.0,  # fail fast if something’s wrong
 )
 
 # vc variables:
