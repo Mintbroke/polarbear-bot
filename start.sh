@@ -12,10 +12,13 @@ if command -v ollama >/dev/null; then
   ollama show "$MODEL" >/dev/null 2>&1 || ollama pull "$MODEL"
 
   # after pulling MODEL in start.sh
-curl -sS --max-time 600 "http://127.0.0.1:11434/v1/chat/completions" \
-  -H "Content-Type: application/json" -H "Authorization: Bearer ollama" \
-  -d '{"model":"'"${MODEL}"'","messages":[{"role":"user","content":"ok"}],"max_tokens":1,"stream":false}' \
-  >/dev/null || echo "warmup: timed out (non-fatal)"
+    curl -sS --max-time 600 http://127.0.0.1:11434/api/generate \
+    -H "Content-Type: application/json" \
+    -d '{"model":"'"${MODEL}"'","prompt":"ok","stream":false,
+        "options":{"use_mmap":true,"num_thread":1,"num_ctx":512,"num_predict":1},
+        "keep_alive":"30m"}' \
+    >/dev/null || echo "warmup: timed out (non-fatal)"
+
 
 
 fi

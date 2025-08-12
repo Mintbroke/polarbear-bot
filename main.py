@@ -256,7 +256,7 @@ async def chat(msg: discord.Message, message: str):
                 max_tokens=64,
                 stream=False,  # send only after completion
                 extra_body={"keep_alive": "30m",
-                            "options": {"num_thread": 1, "num_ctx": 512}},
+                            "options": {"num_thread": 1, "num_ctx": 512, "use_mmap":True,}},
             )
 
             text = (resp.choices[0].message.content or "").strip() or "no content"
@@ -321,10 +321,13 @@ async def voice(interaction: discord.Interaction):
 
 @bot.event
 async def on_message(d_message: discord.Message):
-    if(bot.user.mentioned_in(d_message)) and not d_message.mention_everyone:
+    if(bot.user.mentioned_in(d_message) and not d_message.mention_everyone):
+        print(f"received message for bot: {d_message.content}")
         text = d_message.content
         text = re.sub(fr'<@!?{bot.user.id}>', '', text).strip()
         await chat(d_message, text)
+    else:
+        print("no bot ping")
 
     if(d_message.author.bot or not VOICE):
         return
