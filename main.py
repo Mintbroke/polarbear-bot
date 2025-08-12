@@ -240,9 +240,9 @@ async def pick(interaction: discord.Interaction, options: str):
 
 @bot.tree.command(name="chat", description="/chat [message]")
 async def chat(interaction: discord.Interaction, message: str):
-    await interaction.response.defer(thinking=True)  # ack within 3s
+    await interaction.response.defer()  # ack within 3s
     # Use a normal message we can edit with the bot token (no webhook expiry)
-    await interaction.channel.send(f"{interaction.user.display_name}: {message}")
+    await interaction.followup.send(f"{interaction.user.display_name}: {message}")
     msg = await interaction.channel.send("generating...")
 
     async with ai_lock:
@@ -289,10 +289,6 @@ async def chat(interaction: discord.Interaction, message: str):
                 await msg.edit(content=f"LLM error: {e}")
             except Exception:
                 pass
-        finally:
-            # remove the "is thinking..." placeholder
-            with contextlib.suppress(Exception):
-                await interaction.delete_original_response()
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
