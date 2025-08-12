@@ -237,39 +237,56 @@ async def pick(interaction: discord.Interaction, options: str):
     await interaction.response.send_message(f"choices: {', '.join(options_list)}\nbot picks: {random.choice(options_list)}")
     #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
 
-@bot.tree.command(name="chat", description="/chat [messsage]")
-async def ask(interaction: discord.Interaction, message: str):
-    await interaction.response.defer(thinking=True)
-    # send a placeholder so the spinner stops
-    await interaction.edit_original_response(content="generating...")
+@bot.tree.command(name="chat", description="/chat [message]")
+async def chat(interaction: discord.Interaction, message: str):
+    await interaction.response.defer(thinking=True)  # ack within 3s
+    # Use a normal message we can edit with the bot token (no webhook expiry)
+    msg = await interaction.channel.send("(generating…)")
 
     async with ai_lock:
         try:
             stream = await aclient.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "user", "content": message}],
-                max_tokens=64,       # keep modest on CPU
+                messages=[
+                    {"role": "system", "content": "Be brief and chill. No prefaces."},
+                    {"role": "user", "content": message},
+                ],
+                max_tokens=64,
                 temperature=0.7,
                 stream=True,
-                extra_body={"options": {"num_thread": 2, "num_ctx": 1024}, "keep_alive":"30m"}
+                extra_body={"keep_alive": "30m", "options": {"num_thread": 2, "num_ctx": 1024}},
             )
-            buf, last_edit = "", asyncio.get_event_loop().time()
+
+            buf, first = "", True
+            last_edit = asyncio.get_event_loop().time()
+
             async for ch in stream:
                 delta = (ch.choices[0].delta.content or "")
                 if not delta:
                     continue
                 buf += delta
-                # throttle edits (Discord rate limits)
+
+                # Discord message hard limit: 2000 chars
+                if len(buf) > 1900:
+                    await msg.edit(content=buf[:1900] + "…")
+                    continue
+
+                # send first token immediately; then throttle edits
                 now = asyncio.get_event_loop().time()
-                if now - last_edit > 0.5:
-                    await interaction.edit_original_response(content=buf)
+                if first or (now - last_edit) > 0.5:
+                    await msg.edit(content=buf)
+                    first = False
                     last_edit = now
 
-            await interaction.edit_original_response(content=buf or "(no content)")
+            await msg.edit(content=buf or "(no content)")
+
         except Exception as e:
-            await interaction.edit_original_response(content=f"LLM error: {e}")
-
-
+            # This edit uses bot token, so it won't 401 if the stream ran long
+            try:
+                await msg.edit(content=f"LLM error: {e}")
+            except Exception:
+                pass
+            
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
 async def remind(interaction: discord.Interaction, user: discord.Member, delay: int, message: str):
