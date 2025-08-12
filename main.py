@@ -201,17 +201,14 @@ async def pick(interaction: discord.Interaction, options: str):
 @bot.tree.command(name="ask", description="/ask [question]")
 async def ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer(thinking=True)
-    try:
-        resp = await aclient.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": question}],
-            max_tokens=256,        # keep token count small on CPU
-            temperature=0.2,
-        )
-        text = resp.choices[0].message.content.strip()
-        await interaction.followup.send(text)
-    except Exception as e:
-        await interaction.followup.send(f"LLM error: {e}")
+    resp = await aclient.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": question}],
+        max_tokens=256,        # keep token count small on CPU
+        temperature=0.2,
+    )
+    text = resp.choices[0].message.content.strip()
+    await interaction.followup.send(text)
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
