@@ -36,7 +36,7 @@ RUN chmod +x /app/start.sh
 # Keep Ollama private inside the container
 ENV OLLAMA_HOST=127.0.0.1:11434
 # Change the default model if you like (small CPU-friendly ones recommended)
-ENV OLLAMA_START_MODEL=llama3.2:1b
+ENV OLLAMA_START_MODEL=tinyllama:1.1b
 
 # If you want models to persist across restarts, mount a volume at /root/.ollama
 # VOLUME ["/root/.ollama"]
