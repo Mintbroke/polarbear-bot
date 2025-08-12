@@ -238,16 +238,11 @@ async def pick(interaction: discord.Interaction, options: str):
     await interaction.response.send_message(f"choices: {', '.join(options_list)}\nbot picks: {random.choice(options_list)}")
     #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
 
-@bot.tree.command(name="chat", description="/chat [message]")
-async def chat(interaction: discord.Interaction, message: str):
-    await interaction.response.defer()  # ack within 3s
-    # Use a normal message we can edit with the bot token (no webhook expiry)
-    await interaction.followup.send(f"{interaction.user.display_name}: {message}")
-    msg = await interaction.channel.send("generating...")
-
+#@bot.tree.command(name="chat", description="/chat [message]")
+async def chat(msg, message: str):
     async with ai_lock:
         try:
-            stream = await aclient.chat.completions.create(
+            resp = await aclient.chat.completions.create(
                 model=MODEL,
                 messages=[
                     {"role": "system", "content": "Be brief and chill. No prefaces."},
@@ -256,39 +251,14 @@ async def chat(interaction: discord.Interaction, message: str):
                 max_tokens=64,
                 temperature=0.7,
                 top_p=0.9,
-                stream=True,
+                stream=False,
                 extra_body={"keep_alive": "30m", "options": {"num_thread": 2, "num_ctx": 1024}},
             )
 
-            buf, first = "", True
-            last_edit = asyncio.get_event_loop().time()
-
-            async for ch in stream:
-                delta = (ch.choices[0].delta.content or "")
-                if not delta:
-                    continue
-                buf += delta
-
-                # Discord message hard limit: 2000 chars
-                if len(buf) > 1900:
-                    await msg.edit(content=buf[:1900] + "…")
-                    continue
-
-                # send first token immediately; then throttle edits
-                now = asyncio.get_event_loop().time()
-                if first or (now - last_edit) > 0.5:
-                    await msg.edit(content=buf)
-                    first = False
-                    last_edit = now
-
-            await msg.edit(content=buf or "no content")
-
+            text = (resp.choices[0].message.content or "").strip() or "no content"
+            await msg.reply(text)
         except Exception as e:
-            # This edit uses bot token, so it won't 401 if the stream ran long
-            try:
-                await msg.edit(content=f"LLM error: {e}")
-            except Exception:
-                pass
+            print(f"LLM error: {e}")
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
@@ -324,6 +294,11 @@ async def voice(interaction: discord.Interaction):
 
 @bot.event
 async def on_message(d_message: discord.Message):
+    if(bot.user.mentioned_in(d_message)) and not d_message.mention_everyone:
+        text = d_message.content
+        text = re.sub(fr'<@!?{bot.user.id}>', '', text).strip()
+        chat(d_message, text)
+        
     if(d_message.author.bot or not VOICE):
         return
     global previous_author
