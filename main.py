@@ -284,8 +284,10 @@ async def chat(msg: discord.Message, message: str):
                 print("generating response with mmap...")
                 g = await http.post(f"{ROOT}/api/generate", json={
                     "model": name,
-                    "prompt": "ok",
+                    "prompt": "message",
                     "stream": False,
+                    "temperature": 0.7,
+                    "top_p": 0.9,
                     "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 512}
                 })
                 print("response:", g.status_code, g.text[:80])
