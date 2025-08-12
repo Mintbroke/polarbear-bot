@@ -239,15 +239,33 @@ async def pick(interaction: discord.Interaction, options: str):
 @bot.tree.command(name="ask", description="/ask [question]")
 async def ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer(thinking=True)
-    resp = await aclient.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": question}],
-        max_tokens=256,        # keep token count small on CPU
-        temperature=0.2,
-    )
-    text = resp.choices[0].message.content.strip()
-    print(text)
-    await interaction.followup.send(text)
+    # send a placeholder so the spinner stops
+    await interaction.edit_original_response(content="(generating…)")
+
+    try:
+        stream = await aclient.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": question}],
+            max_tokens=256,       # keep modest on CPU
+            temperature=0.2,
+            stream=True,
+        )
+        buf, last_edit = "", asyncio.get_event_loop().time()
+        async for ch in stream:
+            delta = (ch.choices[0].delta.content or "")
+            if not delta:
+                continue
+            buf += delta
+            # throttle edits (Discord rate limits)
+            now = asyncio.get_event_loop().time()
+            if now - last_edit > 0.5:
+                await interaction.edit_original_response(content=buf)
+                last_edit = now
+
+        await interaction.edit_original_response(content=buf or "(no content)")
+    except Exception as e:
+        await interaction.edit_original_response(content=f"LLM error: {e}")
+
 
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
