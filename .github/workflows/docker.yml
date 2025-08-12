@@ -19,5 +19,5 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/polarbear-bot:railway
+          tags: ghcr.io/mintbroke/polarbear-bot:railway
           provenance: false
