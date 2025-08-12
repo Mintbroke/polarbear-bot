@@ -24,6 +24,7 @@ from openai import OpenAI
 from openai import AsyncOpenAI
 import os
 import httpx
+import contextlib
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
@@ -241,7 +242,8 @@ async def pick(interaction: discord.Interaction, options: str):
 async def chat(interaction: discord.Interaction, message: str):
     await interaction.response.defer(thinking=True)  # ack within 3s
     # Use a normal message we can edit with the bot token (no webhook expiry)
-    msg = await interaction.channel.send("(generating…)")
+    await interaction.channel.send(f"{interaction.user.display_name}: {message}")
+    msg = await interaction.channel.send("generating...")
 
     async with ai_lock:
         try:
@@ -253,6 +255,7 @@ async def chat(interaction: discord.Interaction, message: str):
                 ],
                 max_tokens=64,
                 temperature=0.7,
+                top_p=0.9,
                 stream=True,
                 extra_body={"keep_alive": "30m", "options": {"num_thread": 2, "num_ctx": 1024}},
             )
@@ -278,7 +281,7 @@ async def chat(interaction: discord.Interaction, message: str):
                     first = False
                     last_edit = now
 
-            await msg.edit(content=buf or "(no content)")
+            await msg.edit(content=buf or "no content")
 
         except Exception as e:
             # This edit uses bot token, so it won't 401 if the stream ran long
@@ -286,7 +289,11 @@ async def chat(interaction: discord.Interaction, message: str):
                 await msg.edit(content=f"LLM error: {e}")
             except Exception:
                 pass
-            
+        finally:
+            # remove the "is thinking..." placeholder
+            with contextlib.suppress(Exception):
+                await interaction.delete_original_response()
+
 # remind: /remind [user] [time(minute)] [message]
 @bot.tree.command(name="remind", description="/remind [user] [time(minute)] [message]")
 async def remind(interaction: discord.Interaction, user: discord.Member, delay: int, message: str):
