@@ -247,9 +247,9 @@ async def ask(interaction: discord.Interaction, message: str):
         try:
             stream = await aclient.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "friend", "content": message}],
+                messages=[{"role": "user", "content": message}],
                 max_tokens=64,       # keep modest on CPU
-                temperature=0.2,
+                temperature=0.7,
                 stream=True,
                 extra_body={"options": {"num_thread": 2, "num_ctx": 2048}}
             )
