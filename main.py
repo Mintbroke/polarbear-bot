@@ -41,6 +41,35 @@ aclient = AsyncOpenAI(
     max_retries=0,
 )
 
+async def ensure_model_with_mmap(name: str):
+    async with httpx.AsyncClient(timeout=600.0) as http:
+        # Check if the model exists locally
+        r = await http.post(f"{ROOT}/api/show", json={"name": name})
+        if r.status_code == 404:
+            print(f"Model {name} not found locally — pulling...")
+            pr = await http.post(f"{ROOT}/api/pull", json={"name": name, "stream": False})
+            pr.raise_for_status()
+
+        # Force reload with mmap enabled
+        print(f"Forcing reload of {name} with use_mmap=True...")
+        lr = await http.post(f"{ROOT}/api/load", json={
+            "model": name,
+            "options": {
+                "use_mmap": True,
+                "num_thread": 1,
+                "num_ctx": 512
+            }
+        })
+        lr.raise_for_status()
+
+        # Quick warmup
+        print("Warming up model with mmap...")
+        g = await http.post(f"{ROOT}/api/generate",
+            json={"model": name, "prompt": "ok", "stream": False,
+                  "options": {"use_mmap": True}})
+        print("Warmup response:", g.status_code, g.text[:80])
+
+'''
 async def ensure_model(name: str):
     async with httpx.AsyncClient(timeout=600.0) as http:
         r = await http.post(f"{ROOT}/api/show", json={"name": name})
@@ -74,7 +103,7 @@ async def testAI():
             out.append(delta)
     print("\n--- done ---")
     return "".join(out)
-
+'''
 # vc variables:
 VOICE = False
 VOICE_LOCK = asyncio.Lock()
@@ -218,6 +247,13 @@ async def on_ready():
     await bot.tree.sync()
     print("Slash commands synced!")
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
+
+    print("Preloading Ollama model with mmap at startup...")
+    try:
+        await ensure_model_with_mmap(MODEL)
+        print("✅ Model preloaded with mmap.")
+    except Exception as e:
+        print(f"❌ Failed to preload model: {e}")
 
 @bot.tree.command(name="list", description="Command list for bot")
 async def list(interaction: discord.Interaction):
