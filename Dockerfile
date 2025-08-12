@@ -3,22 +3,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for Discord voice, Postgres headers, build tools, and curl for Ollama install
+# System deps (Discord voice, Postgres headers, build tools, curl/ca for Ollama)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      ffmpeg \
-      libopus0 \
-      libopus-dev \
-      libsodium-dev \
-      libpq-dev \
-      build-essential \
-      python3-dev \
-      curl \
-      ca-certificates && \
+      ffmpeg libopus0 libopus-dev libsodium-dev libpq-dev \
+      build-essential python3-dev curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# ---- Install Ollama (binary) ----
-# This installs the 'ollama' CLI/server into the image
+# ---- Install Ollama ----
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # ---- Python deps ----
@@ -29,22 +21,19 @@ RUN pip install --upgrade pip && \
 # ---- App code ----
 COPY . .
 
-# ---- Startup script (runs Ollama + your bot) ----
+# ---- Startup script ----
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-# Keep Ollama private inside the container
-ENV OLLAMA_HOST=127.0.0.1:11434
-# Change the default model if you like (small CPU-friendly ones recommended)
-ENV OLLAMA_START_MODEL=qwen2.5:0.5b-instruct
-ENV OLLAMA_NUM_THREADS=2
-ENV OLLAMA_NUM_PARALLEL=1
-ENV OLLAMA_CONTEXT_LENGTH=1024
-ENV OLLAMA_KEEP_ALIVE=30m
+# Ollama + app defaults (override in Railway Variables as needed)
+ENV OLLAMA_HOST=127.0.0.1:11434 \
+    OLLAMA_MODELS=/data/ollama \
+    OLLAMA_NUM_THREADS=2 \
+    OLLAMA_NUM_PARALLEL=1 \
+    OLLAMA_CONTEXT_LENGTH=1024 \
+    OLLAMA_KEEP_ALIVE=15m \
+    OLLAMA_START_MODEL=qwen2.5:0.5b-instruct \
+    OPENAI_BASE_URL=http://127.0.0.1:11434/v1 \
+    OPENAI_API_KEY=ollama
 
-
-# If you want models to persist across restarts, mount a volume at /root/.ollama
-VOLUME ["/root/.ollama"]
-
-# Entrypoint: boot Ollama, wait, pull model if needed, then run your bot
 CMD ["/app/start.sh"]
