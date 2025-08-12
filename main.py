@@ -28,6 +28,9 @@ import httpx
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
 MODEL = "tinyllama:1.1b"
+BASE  = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+ROOT  = BASE.rsplit("/v1", 1)[0]
+
 aclient = AsyncOpenAI(
     base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1"),
     api_key=os.getenv("OPENAI_API_KEY", "ollama"),
