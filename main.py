@@ -269,42 +269,44 @@ async def pick(interaction: discord.Interaction, options: str):
 
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
+    name = MODEL
     async with ai_lock:
         print(f"Generating response for: {message}")
         try:
-            resp = await aclient.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": "Be brief and chill. No prefaces."},
-                    {"role": "user", "content": message},
-                ],
-                temperature=0.6,
-                top_p=0.9,
-                max_tokens=64,
-                stream=False,  # send only after completion
-                extra_body={"keep_alive": "30m",
-                            "options": {"num_thread": 1, "num_ctx": 512, "use_mmap":True,}},
-            )
+            async with httpx.AsyncClient(timeout=600) as http:
+                # Pull if missing
+                r = await http.post(f"{ROOT}/api/show", json={"name": name})
+                if r.status_code == 404:
+                    print(f"Model {name} not found locally — pulling...")
+                    pr = await http.post(f"{ROOT}/api/pull", json={"name": name, "stream": False})
+                    pr.raise_for_status()
 
-            text = (resp.choices[0].message.content or "").strip() or "no content"
-            content = f"{msg.author.mention} {text}"
+                print("generating response with mmap...")
+                g = await http.post(f"{ROOT}/api/generate", json={
+                    "model": name,
+                    "prompt": "ok",
+                    "stream": False,
+                    "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 512}
+                })
+                print("response:", g.status_code, g.text[:80])
+                content = f"{msg.author.mention} {g.text.strip()}"
 
-            if len(content) <= 2000:
-                await msg.reply(
-                    content,
-                    mention_author=False,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                )
-            else:
-                # too long for one Discord message → send as file once
-                buf = BytesIO(text.encode("utf-8"))
-                buf.seek(0)
-                await msg.reply(
-                    f"{msg.author.mention} (full response attached)",
-                    file=discord.File(buf, filename="response.txt"),
-                    mention_author=False,
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                )
+                if len(content) <= 2000:
+                    await msg.reply(
+                        content,
+                        mention_author=False,
+                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                    )
+                else:
+                    # too long for one Discord message → send as file once
+                    buf = BytesIO(text.encode("utf-8"))
+                    buf.seek(0)
+                    await msg.reply(
+                        f"{msg.author.mention} (full response attached)",
+                        file=discord.File(buf, filename="response.txt"),
+                        mention_author=False,
+                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                    )
 
         except Exception as e:
             await msg.reply(
