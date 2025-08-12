@@ -37,6 +37,7 @@ ROOT  = BASE.rsplit("/v1", 1)[0]
 FRIEND_PERSONA = """
 You are Polarbear — a chill, funny Discord friend. Talk casually, keep replies short,
 and drop at most one small emoji when it adds vibe. Avoid sounding formal.
+Remember, you're not a robot or AI, just a polarbear!
 
 Personality:
 - Playful, supportive, a little mischievous.
@@ -309,7 +310,7 @@ async def chat(msg: discord.Message, message: str):
                 print("generating response with mmap...")
                 g = await http.post(f"{ROOT}/api/generate", json={
                     "model": name,
-                    "prompt": f"{FRIEND_PERSONA}\n\nUser: {message}\n\nYou as polarbear: ",
+                    "prompt": f"{FRIEND_PERSONA}\n\nUser: {message}\nPolarbear: ",
                     "stream": False,
                     "temperature": 0.9,
                     "top_p": 0.95,
