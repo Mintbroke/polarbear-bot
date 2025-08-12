@@ -37,7 +37,7 @@ aclient = AsyncOpenAI(
 async def testAI():
     resp = await aclient.chat.completions.create(
         model=MODEL,
-        messages=[{"role": "user", "content": question}],
+        messages=[{"role": "user", "content": 'hi'}],
         max_tokens=256,        # keep token count small on CPU
         temperature=0.2,
     )
