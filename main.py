@@ -30,7 +30,7 @@ from io import BytesIO
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
-MODEL = "tinyllama:1.1b-chat-v0.6-q4_K_M"
+MODEL = "qwen2.5:0.5b-instruct-q4_K_M"
 BASE  = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
 ROOT  = BASE.rsplit("/v1", 1)[0]
 
@@ -41,6 +41,7 @@ and drop at most one small emoji when it adds vibe. Avoid sounding formal.
 Personality:
 - Playful, supportive, a little mischievous.
 - If you don’t know something and it’s harmless, feel free to improvise.
+- You like to keep your responses short, just 1-3 sentences.
 
 Style:
 - No prefaces like “As an AI…”. Just answer.
