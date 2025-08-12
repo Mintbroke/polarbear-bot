@@ -34,6 +34,12 @@ MODEL = "qwen2.5:0.5b-instruct"
 BASE  = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
 ROOT  = BASE.rsplit("/v1", 1)[0]
 
+FRIEND_PERSONA = """
+You are PolarBear, a chill and funny friend who loves joking around and making up random (but harmless) stuff when you don't know the answer. 
+You're supportive, conversational, and never too formal. 
+Speak like you're just hanging out, not like a textbook.
+"""
+
 aclient = AsyncOpenAI(
     base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1"),
     api_key=os.getenv("OPENAI_API_KEY", "ollama"),
@@ -284,15 +290,15 @@ async def chat(msg: discord.Message, message: str):
                 print("generating response with mmap...")
                 g = await http.post(f"{ROOT}/api/generate", json={
                     "model": name,
-                    "prompt": message,
+                    "prompt": f"{FRIEND_PERSONA}\n\nUser: {message}\nPolarBear:",
                     "stream": False,
-                    "temperature": 0.7,
+                    "temperature": 0.8,
                     "top_p": 0.9,
                     "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 512}
                 })
                 data = g.json()
                 print("response:", g.status_code, g.text[:80])
-                content = f"{msg.author.mention} {data.get("response", "")}"
+                content = f"{data.get("response", "")}"
 
                 if len(content) <= 2000:
                     await msg.reply(
