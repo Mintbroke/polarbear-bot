@@ -136,7 +136,7 @@ ssal_price = {"ssal_multiplier" : 100}
 
 # thread 
 lock = threading.Lock()
-ai_lock = threading.Lock()
+ai_lock = asyncio.Lock()
 
 '''
 # database
@@ -241,9 +241,9 @@ async def pick(interaction: discord.Interaction, options: str):
 async def ask(interaction: discord.Interaction, message: str):
     await interaction.response.defer(thinking=True)
     # send a placeholder so the spinner stops
-    await interaction.edit_original_response(content="...")
+    await interaction.edit_original_response(content="generating...")
 
-    with ai_lock:
+    async with ai_lock:
         try:
             stream = await aclient.chat.completions.create(
                 model=MODEL,
@@ -303,7 +303,7 @@ async def voice(interaction: discord.Interaction):
 
 @bot.event
 async def on_message(d_message: discord.Message):
-    if(d_message.author.bot):
+    if(d_message.author.bot or not VOICE):
         return
     global previous_author
     async with VOICE_LOCK:
