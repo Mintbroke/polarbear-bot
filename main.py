@@ -27,12 +27,24 @@ import os
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
-MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "tinyllama:1.1b")
+MODEL = "tinyllama:1.1b"
 aclient = AsyncOpenAI(
     base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1"),
     api_key=os.getenv("OPENAI_API_KEY", "ollama"),
     timeout=15.0,  # fail fast if something’s wrong
 )
+
+async def testAI():
+    resp = await aclient.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": question}],
+        max_tokens=256,        # keep token count small on CPU
+        temperature=0.2,
+    )
+    text = resp.choices[0].message.content.strip()
+    print(text)
+
+testAI()
 
 # vc variables:
 VOICE = False
