@@ -208,6 +208,7 @@ async def ask(interaction: discord.Interaction, question: str):
         temperature=0.2,
     )
     text = resp.choices[0].message.content.strip()
+    print(text)
     await interaction.followup.send(text)
 
 # remind: /remind [user] [time(minute)] [message]
