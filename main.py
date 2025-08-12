@@ -506,7 +506,7 @@ async def refresh(interaction: discord.Interaction):
 #############################################################################################################
 '''
 if __name__ == '__main__':
-    keep_alive()
+    #keep_alive()
     #asyncio.run(testAI())
     # Run the bot using the token from an environment variable
     #load_ssal_coins()
