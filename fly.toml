@@ -1,0 +1,31 @@
+# fly.toml app configuration file generated for polarbear-lavalink on 2025-06-18T12:31:03-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'polarbear-lavalink'
+primary_region = 'lax'
+
+[build]
+image = "fredboat/lavalink:latest"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[services]]
+  protocol = 'udp'
+  internal_port = 8080
+
+  [[services.ports]]
+    start_port = 10000
+    end_port = 65000
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
