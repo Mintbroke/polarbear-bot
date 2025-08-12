@@ -204,7 +204,7 @@ async def ask(interaction: discord.Interaction, question: str):
     try:
         resp = await aclient.chat.completions.create(
             model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": question}],
             max_tokens=256,        # keep token count small on CPU
             temperature=0.2,
         )
