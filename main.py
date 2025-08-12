@@ -299,7 +299,7 @@ async def chat(msg: discord.Message, message: str):
                     )
                 else:
                     # too long for one Discord message → send as file once
-                    buf = BytesIO(text.encode("utf-8"))
+                    buf = BytesIO(g.text.encode("utf-8"))
                     buf.seek(0)
                     await msg.reply(
                         f"{msg.author.mention} (full response attached)",
