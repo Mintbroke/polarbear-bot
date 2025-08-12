@@ -35,6 +35,7 @@ aclient = AsyncOpenAI(
 )
 
 def testAI():
+    print("testing AI:")
     resp = aclient.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": 'hi'}],
