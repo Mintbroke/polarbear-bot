@@ -28,7 +28,7 @@ import contextlib
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
 
-MODEL = "smollm:135m"
+MODEL = "qwen2.5:0.5b-instruct"
 BASE  = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
 ROOT  = BASE.rsplit("/v1", 1)[0]
 
@@ -298,7 +298,7 @@ async def on_message(d_message: discord.Message):
         text = d_message.content
         text = re.sub(fr'<@!?{bot.user.id}>', '', text).strip()
         chat(d_message, text)
-        
+
     if(d_message.author.bot or not VOICE):
         return
     global previous_author
