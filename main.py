@@ -239,9 +239,10 @@ async def pick(interaction: discord.Interaction, options: str):
     #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
 
 #@bot.tree.command(name="chat", description="/chat [message]")
-async def chat(msg, message: str):
+async def chat(msg: discord.Message, message: str):
     async with ai_lock:
         try:
+            print(f"Generating response for: {message}")
             resp = await aclient.chat.completions.create(
                 model=MODEL,
                 messages=[
@@ -297,7 +298,7 @@ async def on_message(d_message: discord.Message):
     if(bot.user.mentioned_in(d_message)) and not d_message.mention_everyone:
         text = d_message.content
         text = re.sub(fr'<@!?{bot.user.id}>', '', text).strip()
-        chat(d_message, text)
+        await chat(d_message, text)
 
     if(d_message.author.bot or not VOICE):
         return
