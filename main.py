@@ -136,6 +136,7 @@ ssal_price = {"ssal_multiplier" : 100}
 
 # thread 
 lock = threading.Lock()
+ai_lock = threading.Lock()
 
 '''
 # database
@@ -236,35 +237,36 @@ async def pick(interaction: discord.Interaction, options: str):
     await interaction.response.send_message(f"choices: {', '.join(options_list)}\nbot picks: {random.choice(options_list)}")
     #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
 
-@bot.tree.command(name="ask", description="/ask [question]")
-async def ask(interaction: discord.Interaction, question: str):
+@bot.tree.command(name="chat", description="/chat [messsage]")
+async def ask(interaction: discord.Interaction, message: str):
     await interaction.response.defer(thinking=True)
     # send a placeholder so the spinner stops
-    await interaction.edit_original_response(content="(generating…)")
+    await interaction.edit_original_response(content="...")
 
-    try:
-        stream = await aclient.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": question}],
-            max_tokens=256,       # keep modest on CPU
-            temperature=0.2,
-            stream=True,
-        )
-        buf, last_edit = "", asyncio.get_event_loop().time()
-        async for ch in stream:
-            delta = (ch.choices[0].delta.content or "")
-            if not delta:
-                continue
-            buf += delta
-            # throttle edits (Discord rate limits)
-            now = asyncio.get_event_loop().time()
-            if now - last_edit > 0.5:
-                await interaction.edit_original_response(content=buf)
-                last_edit = now
+    with ai_lock:
+        try:
+            stream = await aclient.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "friend", "content": message}],
+                max_tokens=64,       # keep modest on CPU
+                temperature=0.2,
+                stream=True,
+            )
+            buf, last_edit = "", asyncio.get_event_loop().time()
+            async for ch in stream:
+                delta = (ch.choices[0].delta.content or "")
+                if not delta:
+                    continue
+                buf += delta
+                # throttle edits (Discord rate limits)
+                now = asyncio.get_event_loop().time()
+                if now - last_edit > 0.5:
+                    await interaction.edit_original_response(content=buf)
+                    last_edit = now
 
-        await interaction.edit_original_response(content=buf or "(no content)")
-    except Exception as e:
-        await interaction.edit_original_response(content=f"LLM error: {e}")
+            await interaction.edit_original_response(content=buf or "(no content)")
+        except Exception as e:
+            await interaction.edit_original_response(content=f"LLM error: {e}")
 
 
 # remind: /remind [user] [time(minute)] [message]
