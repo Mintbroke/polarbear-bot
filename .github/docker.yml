@@ -1,0 +1,23 @@
+name: build-and-push
+on:
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/polarbear-bot:railway
+          provenance: false
