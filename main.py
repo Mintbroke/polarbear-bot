@@ -284,7 +284,7 @@ async def chat(msg: discord.Message, message: str):
                 print("generating response with mmap...")
                 g = await http.post(f"{ROOT}/api/generate", json={
                     "model": name,
-                    "prompt": "message",
+                    "prompt": message,
                     "stream": False,
                     "temperature": 0.7,
                     "top_p": 0.9,
