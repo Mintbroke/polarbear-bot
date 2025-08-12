@@ -251,6 +251,7 @@ async def ask(interaction: discord.Interaction, message: str):
                 max_tokens=64,       # keep modest on CPU
                 temperature=0.2,
                 stream=True,
+                extra_body={"options": {"num_thread": 2, "num_ctx": 2048}}
             )
             buf, last_edit = "", asyncio.get_event_loop().time()
             async for ch in stream:
