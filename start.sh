@@ -11,9 +11,12 @@ if command -v ollama >/dev/null; then
   MODEL="${OLLAMA_START_MODEL:-tinyllama:1.1b}"
   ollama show "$MODEL" >/dev/null 2>&1 || ollama pull "$MODEL"
 
-  curl -s http://127.0.0.1:11434/v1/chat/completions \
+  # after pulling MODEL in start.sh
+curl -sS --max-time 120 "http://127.0.0.1:11434/v1/chat/completions" \
   -H "Content-Type: application/json" -H "Authorization: Bearer ollama" \
-  -d '{"model":"'"${OLLAMA_START_MODEL:-tinyllama:1.1b}"'","messages":[{"role":"user","content":"ok"}],"max_tokens":1,"stream":false}' >/dev/null || true
+  -d '{"model":"'"${MODEL}"'","messages":[{"role":"user","content":"ok"}],"max_tokens":1,"stream":false}' \
+  >/dev/null || echo "warmup: timed out (non-fatal)"
+
 
 fi
 
