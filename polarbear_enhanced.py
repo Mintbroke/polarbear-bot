@@ -210,8 +210,9 @@ class EnhancedPolarBearBot:
         if any(phrase in message_lower for phrase in ["pick a number", "choose a number", "what number", "give me a number"]):
             return "number"
             
-        # Name-calling (if message contains curse words or aggressive tone)
-        if any(word in message_lower for word in ["fuck", "shit", "damn", "stupid", "idiot", "dumb", "hate", "suck"]):
+        # Name-calling (only if directly insulting the bot or being very aggressive)
+        namecall_phrases = ["you're stupid", "you're dumb", "you're an idiot", "fuck you", "you suck", "you're trash"]
+        if any(phrase in message_lower for phrase in namecall_phrases):
             return "namecall"
         
         return "general"
@@ -243,15 +244,22 @@ class EnhancedPolarBearBot:
     
     def _generate_ai_sync(self, message):
         """Synchronous AI generation (runs in thread pool)"""
+        logger.info(f"_generate_ai_sync called with: '{message}'")
+        logger.info(f"Model available: {hasattr(self, 'model')}, Use AI: {self.use_ai}")
+        
         try:
             # Create a conversation context for DialoGPT
             # Format: Human message + separator, then let model continue
             conversation_text = f"Human: {message}\nPolarBear:"
+            logger.info(f"Conversation text: '{conversation_text}'")
             
             # Tokenize input
+            logger.info("Starting tokenization...")
             inputs = self.tokenizer.encode(conversation_text, return_tensors="pt", max_length=256, truncation=True)
+            logger.info(f"Tokenized input shape: {inputs.shape}")
             
             # Generate response with proper settings for DialoGPT
+            logger.info("Starting model generation...")
             with torch.no_grad():
                 outputs = self.model.generate(
                     inputs,
@@ -264,23 +272,28 @@ class EnhancedPolarBearBot:
                     no_repeat_ngram_size=3,
                     repetition_penalty=1.1
                 )
+            logger.info(f"Model generation completed, output shape: {outputs.shape}")
             
             # Decode only the new tokens (response part)
-            response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
+            raw_response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
+            logger.info(f"Raw AI response: '{raw_response}'")
             
             # Clean up the response
-            if response:
+            if raw_response:
                 # Remove any leftover conversation markers
-                response = response.replace("Human:", "").replace("PolarBear:", "").strip()
+                response = raw_response.replace("Human:", "").replace("PolarBear:", "").strip()
+                logger.info(f"After marker removal: '{response}'")
                 
                 # Split on newlines and take first complete response
                 lines = response.split('\n')
                 response = lines[0].strip() if lines else ""
+                logger.info(f"After line split: '{response}'")
                 
                 # Add polar bear personality if response is good
                 if response and len(response) > 3:
                     # Make it lowercase and casual
                     response = response.lower().strip()
+                    logger.info(f"After lowercase: '{response}'")
                     
                     # Add emojis occasionally
                     if random.random() < 0.7:
@@ -289,26 +302,35 @@ class EnhancedPolarBearBot:
                     
                     # Clean up any weird artifacts
                     response = re.sub(r'[^\w\s!?.,\'\"🐻‍❄️❄️🧊🐾\-]', '', response)
+                    logger.info(f"Final cleaned response: '{response}'")
                     
                     return response
+                else:
+                    logger.info(f"Response too short or empty: '{response}' (length: {len(response) if response else 0})")
+            else:
+                logger.info("Raw response was empty")
                 
         except Exception as e:
-            logger.error(f"AI generation error: {e}")
+            logger.error(f"AI generation error: {e}", exc_info=True)
             
+        logger.info("Returning None from AI generation")
         return None
 
     async def generate_ai_response(self, message):
         """Generate AI response with timeout protection"""
         if not self.use_ai or not self.executor:
+            logger.info("AI not available, skipping AI generation")
             return None
             
         try:
+            logger.info(f"Starting AI generation for: '{message}'")
             # Run AI generation in thread pool with timeout
             loop = asyncio.get_event_loop()
             future = loop.run_in_executor(self.executor, self._generate_ai_sync, message)
             
             # 3 second timeout to prevent Discord heartbeat issues
             response = await asyncio.wait_for(future, timeout=3.0)
+            logger.info(f"AI generation completed: '{response}'")
             return response
             
         except asyncio.TimeoutError:
@@ -322,19 +344,24 @@ class EnhancedPolarBearBot:
         """Main chat function with hybrid AI + predefined approach (async)"""
         try:
             intent = self.detect_intent(message)
-            logger.info(f"Detected intent: {intent}")
+            logger.info(f"Detected intent: {intent} for message: '{message}'")
             
             # Use predefined responses for specific intents
             if intent == "namecall":
+                logger.info("Using namecall response")
                 response = self.generate_namecall_response(message)
             elif intent in self.responses:
+                logger.info(f"Using predefined response for intent: {intent}")
                 response = random.choice(self.responses[intent])
             else:
                 # Try AI model for general conversation
+                logger.info("Attempting AI generation...")
                 response = await self.generate_ai_response(message)
+                logger.info(f"AI response: '{response}'")
                 
                 # Fallback to predefined if AI fails or gives poor response
                 if not response or len(response.strip()) < 3:
+                    logger.info("AI failed, using fallback response")
                     response = random.choice([
                         "that's pretty cool! ❄️",
                         "nice! keeping it chill 🐻‍❄️",
@@ -345,8 +372,10 @@ class EnhancedPolarBearBot:
                         "absolutely! keeping it icy 🐾",
                         "yeah! polar bear energy 🧊"
                     ])
+                else:
+                    logger.info("Using AI generated response")
             
-            logger.info(f"Generated response: {response}")
+            logger.info(f"Final response: {response}")
             return response
             
         except Exception as e:
