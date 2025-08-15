@@ -1,20 +1,50 @@
 #!/usr/bin/env python3
 """
 Enhanced Polarbear Hybrid Bot v2
-Hybrid approach using predefined responses + personality injection
+Hybrid approach using predefined responses + AI model for enhanced conversations
+Optimized for Railway deployment (8GB RAM, 8 vCPU)
 """
 
 import random
 import re
 import logging
+import os
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class EnhancedPolarBearBot:
     def __init__(self):
-        """Initialize the enhanced polar bear bot"""
-        logger.info("🐻‍❄️ Initializing Enhanced Polar Bear Bot...")
+        """Initialize the enhanced polar bear bot with AI model"""
+        logger.info("🐻‍❄️ Initializing Enhanced Polar Bear Bot with AI...")
+        
+        # Initialize AI model (DialoGPT-medium - better quality for Railway constraints)
+        self.model_name = "microsoft/DialoGPT-medium"
+        self.use_ai = True
+        
+        try:
+            logger.info("📦 Loading AI model (DialoGPT-medium)...")
+            # Use CPU-only to fit in 8GB RAM constraint
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                torch_dtype=torch.float32,  # Use float32 for CPU
+                device_map="cpu",
+                low_cpu_mem_usage=True
+            )
+            
+            # Add padding token if it doesn't exist
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            logger.info("✅ AI model loaded successfully!")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load AI model: {e}")
+            logger.info("🔄 Falling back to predefined responses only")
+            self.use_ai = False
         
         # Predefined responses for better consistency
         self.responses = {
@@ -204,28 +234,84 @@ class EnhancedPolarBearBot:
         
         return template.format(name=name, insult=insult)
     
+    def generate_ai_response(self, message):
+        """Generate AI response with polar bear personality"""
+        if not self.use_ai:
+            return None
+            
+        try:
+            # Inject polar bear personality into the prompt
+            polar_prompt = f"polarbear (friendly arctic bot): {message.lower()}"
+            
+            # Tokenize input
+            inputs = self.tokenizer.encode(polar_prompt, return_tensors="pt", max_length=512, truncation=True)
+            
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    inputs,
+                    max_length=inputs.shape[1] + 50,  # Keep responses concise
+                    num_return_sequences=1,
+                    temperature=0.8,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    no_repeat_ngram_size=2
+                )
+            
+            # Decode response
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract just the bot's response (after the prompt)
+            if "polarbear (friendly arctic bot):" in response:
+                response = response.split("polarbear (friendly arctic bot):")[-1].strip()
+            
+            # Add polar bear personality touches
+            if response and len(response) > 5:
+                # Add emojis occasionally
+                if random.random() < 0.7:
+                    emojis = ["🐻‍❄️", "❄️", "🧊", "🐾"]
+                    response += f" {random.choice(emojis)}"
+                
+                # Ensure lowercase casual style
+                response = response.lower().strip()
+                
+                # Remove any weird artifacts
+                response = re.sub(r'[^\w\s!?.,\'\"🐻‍❄️❄️🧊🐾]', '', response)
+                
+                return response
+                
+        except Exception as e:
+            logger.error(f"AI generation error: {e}")
+            
+        return None
+    
     def chat(self, message):
-        """Main chat function with hybrid approach"""
+        """Main chat function with hybrid AI + predefined approach"""
         try:
             intent = self.detect_intent(message)
             logger.info(f"Detected intent: {intent}")
             
+            # Use predefined responses for specific intents
             if intent == "namecall":
                 response = self.generate_namecall_response(message)
             elif intent in self.responses:
                 response = random.choice(self.responses[intent])
             else:
-                # General fallback with polar bear personality
-                response = random.choice([
-                    "that's pretty cool! ❄️",
-                    "nice! keeping it chill 🐻‍❄️",
-                    "sounds good to me! 🐾",
-                    "word! staying frosty 🧊",
-                    "totally! arctic vibes ❄️",
-                    "for sure! chillin as always 🐻‍❄️",
-                    "absolutely! keeping it icy 🐾",
-                    "yeah! polar bear energy 🧊"
-                ])
+                # Try AI model for general conversation
+                response = self.generate_ai_response(message)
+                
+                # Fallback to predefined if AI fails or gives poor response
+                if not response or len(response.strip()) < 3:
+                    response = random.choice([
+                        "that's pretty cool! ❄️",
+                        "nice! keeping it chill 🐻‍❄️",
+                        "sounds good to me! 🐾",
+                        "word! staying frosty 🧊",
+                        "totally! arctic vibes ❄️",
+                        "for sure! chillin as always 🐻‍❄️",
+                        "absolutely! keeping it icy 🐾",
+                        "yeah! polar bear energy 🧊"
+                    ])
             
             logger.info(f"Generated response: {response}")
             return response
@@ -236,4 +322,13 @@ class EnhancedPolarBearBot:
 
     def __del__(self):
         """Cleanup when bot is destroyed"""
+        try:
+            if hasattr(self, 'model') and self.model is not None:
+                # Clear model from memory
+                del self.model
+                del self.tokenizer
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        except:
+            pass
         logger.info("🐻‍❄️ Enhanced Polar Bear Bot shutting down...")
