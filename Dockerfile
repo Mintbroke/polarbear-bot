@@ -23,8 +23,3 @@ EXPOSE 8000
 
 # Run the Discord bot
 CMD ["python", "main.py"]
-    OLLAMA_START_MODEL=qwen2.5:0.5b-instruct-q4_K_M \
-    OPENAI_BASE_URL=http://127.0.0.1:11434/v1 \
-    OPENAI_API_KEY=ollama
-
-CMD ["/app/start.sh"]
