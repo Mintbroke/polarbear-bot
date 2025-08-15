@@ -126,6 +126,23 @@ class EnhancedPolarBearBot:
                 "i'd go with 8.8! almost there! 🐻‍❄️",
                 "thinking 7.9! not too shabby ❄️",
                 "8.2 sounds right! content with that 🐾"
+            ],
+            "shutup": [
+                "shut up! ❄️",
+                "shut the hell up! 🧊",
+                "be quiet! 🐻‍❄️",
+                "stop talking! 🐾",
+                "shut your mouth! ❄️",
+                "zip it! 🧊",
+                "nobody asked you! 🐻‍❄️",
+                "silence! 🐾",
+                "shut up already! ❄️",
+                "close your trap! 🧊",
+                "quit yapping! 🐻‍❄️",
+                "shut it! 🐾",
+                "stfu! ❄️",
+                "pipe down! 🧊",
+                "shut your pie hole! 🐻‍❄️"
             ]
         }
         
@@ -211,10 +228,37 @@ class EnhancedPolarBearBot:
         # Number questions
         if any(phrase in message_lower for phrase in ["pick a number", "choose a number", "what number", "give me a number"]):
             return "number"
+        
+        # Shut up requests (telling someone to shut up)
+        shutup_patterns = ["tell", "say", "let", "go tell"]
+        shutup_phrases = ["shut up", "shutup", "be quiet", "stop talking", "stfu", "shut the fuck up"]
+        
+        # Check if asking to tell someone to shut up
+        has_tell_pattern = any(pattern in message_lower for pattern in shutup_patterns)
+        has_shutup_phrase = any(phrase in message_lower for phrase in shutup_phrases)
+        
+        if has_tell_pattern and has_shutup_phrase:
+            return "shutup"
             
-        # Name-calling (only if directly insulting the bot or being very aggressive)
-        namecall_phrases = ["you're stupid", "you're dumb", "you're an idiot", "fuck you", "you suck", "you're trash"]
-        if any(phrase in message_lower for phrase in namecall_phrases):
+        # Third-party insults (telling someone else they're stupid/dumb)
+        insult_patterns = [
+            "tell", "say", "call", "let", "go tell"
+        ]
+        insult_words = [
+            "stupid", "dumb", "idiot", "retarded", "moron", "dumbass", "dummy", 
+            "fool", "clown", "loser", "trash", "garbage", "dipshit", "jackass"
+        ]
+        
+        # Check if asking to insult someone else
+        has_tell_pattern = any(pattern in message_lower for pattern in insult_patterns)
+        has_insult_word = any(word in message_lower for word in insult_words)
+        
+        if has_tell_pattern and has_insult_word:
+            return "namecall"
+            
+        # Direct name-calling (only if directly insulting the bot)
+        direct_namecall_phrases = ["you're stupid", "you're dumb", "you're an idiot", "fuck you", "you suck", "you're trash"]
+        if any(phrase in message_lower for phrase in direct_namecall_phrases):
             return "namecall"
         
         return "general"
@@ -247,53 +291,35 @@ class EnhancedPolarBearBot:
     def _generate_ai_sync(self, message):
         """Synchronous AI generation (runs in thread pool)"""
         try:
-            # Create a conversation context for DialoGPT
-            conversation_text = f"Human: {message}\nPolarBear:"
+            # Simple direct approach - just encode the message and generate
+            inputs = self.tokenizer.encode(message + self.tokenizer.eos_token, return_tensors="pt")
             
-            # Tokenize input
-            inputs = self.tokenizer.encode(conversation_text, return_tensors="pt", max_length=256, truncation=True)
-            
-            # Generate response with proper settings for DialoGPT
+            # Generate response with simple settings
             with torch.no_grad():
                 outputs = self.model.generate(
                     inputs,
-                    max_new_tokens=40,  # Generate up to 40 new tokens
-                    num_beams=1,  # Greedy search for speed
-                    temperature=0.9,
+                    max_length=inputs.shape[1] + 50,
+                    num_return_sequences=1,
+                    temperature=0.8,
                     do_sample=True,
                     pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    no_repeat_ngram_size=3,
-                    repetition_penalty=1.1
+                    no_repeat_ngram_size=2
                 )
             
-            # Decode only the new tokens (response part)
-            raw_response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
+            # Decode the response
+            response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
             
-            # Clean up the response
-            if raw_response:
-                # Remove any leftover conversation markers
-                response = raw_response.replace("Human:", "").replace("PolarBear:", "").strip()
+            # Basic cleanup and add emojis
+            if response and len(response.strip()) > 0:
+                response = response.strip()
                 
-                # Split on newlines and take first complete response
-                lines = response.split('\n')
-                response = lines[0].strip() if lines else ""
+                # Add polar bear emoji occasionally
+                if random.random() < 0.7:
+                    emojis = ["🐻‍❄️", "❄️", "🧊", "🐾"]
+                    response += f" {random.choice(emojis)}"
                 
-                # Add polar bear personality if response is good
-                if response and len(response) > 3:
-                    # Make it lowercase and casual
-                    response = response.lower().strip()
-                    
-                    # Add emojis occasionally
-                    if random.random() < 0.7:
-                        emojis = ["🐻‍❄️", "❄️", "🧊", "🐾"]
-                        response += f" {random.choice(emojis)}"
-                    
-                    # Clean up any weird artifacts
-                    response = re.sub(r'[^\w\s!?.,\'\"🐻‍❄️❄️🧊🐾\-]', '', response)
-                    
-                    logger.info(f"AI generated: '{response}' for '{message}'")
-                    return response
+                logger.info(f"AI generated: '{response}' for '{message}'")
+                return response
                 
         except Exception as e:
             logger.error(f"AI generation error: {e}")
@@ -333,10 +359,10 @@ class EnhancedPolarBearBot:
             # Use predefined responses for specific intents
             if intent == "namecall":
                 response = self.generate_namecall_response(message)
-                logger.info(f"Used namecall response")
+                logger.info(f"Used namecall response: '{response}'")
             elif intent in self.responses:
                 response = random.choice(self.responses[intent])
-                logger.info(f"Used predefined {intent} response")
+                logger.info(f"Used predefined {intent} response: '{response}'")
             else:
                 # Try AI model for general conversation
                 logger.info("Trying AI generation...")
@@ -355,8 +381,9 @@ class EnhancedPolarBearBot:
                         "absolutely! keeping it icy 🐾",
                         "yeah! polar bear energy 🧊"
                     ])
+                    logger.info(f"Used fallback response: '{response}'")
                 else:
-                    logger.info("Used AI response")
+                    logger.info(f"Used AI response: '{response}'")
             
             return response
             
