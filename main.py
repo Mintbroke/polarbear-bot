@@ -20,12 +20,6 @@ from zoneinfo import ZoneInfo
 
 from web import keep_alive
 
-from openai import OpenAI
-from openai import AsyncOpenAI
-import os
-import httpx
-import contextlib
-
 from io import BytesIO
 
 from polarbear_enhanced import EnhancedPolarBearBot
@@ -177,13 +171,6 @@ async def on_ready():
     print("Slash commands synced!")
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
 
-    print("Preloading Ollama model with mmap at startup...")
-    try:
-        await ensure_model_with_mmap(MODEL)
-        print("✅ Model preloaded with mmap.")
-    except Exception as e:
-        print(f"❌ Failed to preload model: {e}")
-
 @bot.tree.command(name="list", description="Command list for bot")
 async def list(interaction: discord.Interaction):
     await interaction.response.send_message(commands_list, ephemeral=True)
@@ -207,7 +194,6 @@ async def pick(interaction: discord.Interaction, options: str):
 
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
-    name = MODEL
     async with ai_lock:
         print(f"Generating response for: {message}")
         try:  
