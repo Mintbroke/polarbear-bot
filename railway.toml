@@ -1,3 +1,6 @@
 [build]
-builder = "nixpacks"
-nixpacksConfigPath = "nixpacks.toml"
+builder = "dockerfile"
+
+[deploy]
+restartPolicyType = "always"
+startCommand = "python start_bot.py"

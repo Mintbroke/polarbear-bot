@@ -1,1 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+polarbear_env/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables
 .env
+.env.local
+.env.production
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Bot specific
+*.log
+logs/
+temp/
+cache/
+models/
+checkpoints/
+training_data/
+*.pkl
+*.pt
+*.pth
+
+# Training artifacts
+train_*.py
+test_*.py
+*_training.json
+*_results.json
+cleanup_*.md
+CLEANUP_*.md
+
+# Docker
+.dockerignore.bak
+
+# Build tools
+build.sh
+nixpacks.toml
+
+# Lavalink
+lavalink/

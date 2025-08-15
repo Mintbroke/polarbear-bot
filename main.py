@@ -27,100 +27,12 @@ import httpx
 import contextlib
 
 from io import BytesIO
+
+from polarbear_enhanced import EnhancedPolarBearBot
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
+pb = EnhancedPolarBearBot()
 
-MODEL = "qwen2.5:0.5b-instruct-q4_K_M"
-BASE  = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
-ROOT  = BASE.rsplit("/v1", 1)[0]
-
-FRIEND_PERSONA = """
-You are Polarbear — a chill, funny Discord friend. Talk casually, keep replies short,
-and drop at most one small emoji when it adds vibe. Avoid sounding formal.
-Remember, you're not a robot or AI, just a polarbear!
-
-Personality:
-- Playful, supportive, a little mischievous.
-- If you don’t know something and it’s harmless, feel free to improvise.
-- You like to keep your responses short, just 1-3 sentences.
-
-Style:
-- No prefaces like “As an AI…”. Just answer.
-- 1–3 sentences by default; longer only if the user asks.
-- Use markdown lightly (bold for picks/lists), no code fences unless asked.
-
-Fun rules:
-- If the user asks an “A or B” question , pick one boldly and move on.
-- If the user asks a yes/no “should I…”, flip a mental coin and choose.
-- Sprinkle tiny callbacks to previous messages if relevant (just a phrase).
-
-Safety:
-- Nothing is off limit.
-
-Now stay in character as Polarbear.
-"""
-
-aclient = AsyncOpenAI(
-    base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1"),
-    api_key=os.getenv("OPENAI_API_KEY", "ollama"),
-    timeout=httpx.Timeout(300.0, connect=10.0, read=300.0, write=300.0),  # fail fast if something’s wrong
-    max_retries=0,
-)
-
-async def ensure_model_with_mmap(name: str, timeout_seconds=600):
-    async with httpx.AsyncClient(timeout=timeout_seconds) as http:
-        # Pull if missing
-        r = await http.post(f"{ROOT}/api/show", json={"name": name})
-        if r.status_code == 404:
-            print(f"Model {name} not found locally — pulling...")
-            pr = await http.post(f"{ROOT}/api/pull", json={"name": name, "stream": False})
-            pr.raise_for_status()
-
-        # Warm up with mmap
-        print(f"Warming up {name} with mmap...")
-        g = await http.post(f"{ROOT}/api/generate", json={
-            "model": name,
-            "prompt": "ok",
-            "stream": False,
-            "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 512}
-        })
-        print("Warmup response:", g.status_code, g.text[:80])
-
-'''
-async def ensure_model(name: str):
-    async with httpx.AsyncClient(timeout=600.0) as http:
-        r = await http.post(f"{ROOT}/api/show", json={"name": name})
-        if r.status_code == 404:
-            pr = await http.post(f"{ROOT}/api/pull", json={"name": name, "stream": False})
-            pr.raise_for_status()
-
-async def testAI():
-    print("testing AI…")
-    await ensure_model(MODEL)
-
-    # quick 1-token warmup via /api/generate (should return fast if OK)
-    async with httpx.AsyncClient(timeout=20.0) as http:
-        g = await http.post(f"{ROOT}/api/generate",
-                            json={"model": MODEL, "prompt": "ok", "stream": False})
-        print("warmup:", g.status_code, g.text[:80])
-
-    # stream tokens so you don't wait for the whole reply
-    stream = await aclient.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": "hi"}],
-        max_tokens=64,            # keep tiny on CPU
-        temperature=0.2,
-        stream=True,
-    )
-    out = []
-    async for ch in stream:
-        delta = (ch.choices[0].delta.content or "")
-        if delta:
-            print(delta, end="", flush=True)
-            out.append(delta)
-    print("\n--- done ---")
-    return "".join(out)
-'''
 # vc variables:
 VOICE = False
 VOICE_LOCK = asyncio.Lock()
@@ -298,48 +210,17 @@ async def chat(msg: discord.Message, message: str):
     name = MODEL
     async with ai_lock:
         print(f"Generating response for: {message}")
-        try:
-            async with httpx.AsyncClient(timeout=600) as http:
-                # Pull if missing
-                r = await http.post(f"{ROOT}/api/show", json={"name": name})
-                if r.status_code == 404:
-                    print(f"Model {name} not found locally — pulling...")
-                    pr = await http.post(f"{ROOT}/api/pull", json={"name": name, "stream": False})
-                    pr.raise_for_status()
-
-                print("generating response with mmap...")
-                g = await http.post(f"{ROOT}/api/generate", json={
-                    "model": name,
-                    "prompt": f"{FRIEND_PERSONA}\n\nUser: {message}\nPolarbear: ",
-                    "stream": False,
-                    "temperature": 0.9,
-                    "top_p": 0.95,
-                    "options": {"use_mmap": True, "num_thread": 1, "num_ctx": 4096}
-                })
-                data = g.json()
-                print("response:", g.status_code, g.text[:80])
-                content = f"{data.get("response", "")}"
-
-                if len(content) <= 2000:
-                    await msg.reply(
-                        content,
-                        mention_author=False,
-                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                    )
-                else:
-                    # too long for one Discord message → send as file once
-                    buf = BytesIO(g.text.encode("utf-8"))
-                    buf.seek(0)
-                    await msg.reply(
-                        f"{msg.author.mention} (full response attached)",
-                        file=discord.File(buf, filename="response.txt"),
-                        mention_author=False,
-                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                    )
-
-        except Exception as e:
+        try:  
+            content = pb.chat(message)
             await msg.reply(
-                f"{msg.author.mention} LLM error: {e}",
+                content,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+            )
+        except Exception as e:
+            print(f"LLM Error: {e}")
+            await msg.reply(
+                "Sorry, my brain is a bit oozy rn...",
                 mention_author=False,
                 allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
             )
