@@ -218,7 +218,8 @@ class EnhancedPolarBearBot:
             return "greeting"
             
         # Roast requests
-        if any(phrase in message_lower for phrase in ["roast me", "insult me", "be mean", "be rude", "make fun"]):
+        roast_phrases = ["roast me", "insult me", "be mean", "be rude", "make fun", "roast", "insult", "be mean to me", "be rude to me"]
+        if any(phrase in message_lower for phrase in roast_phrases):
             return "roast"
             
         # Goated questions
