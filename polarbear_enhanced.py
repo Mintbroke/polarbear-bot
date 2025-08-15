@@ -244,46 +244,53 @@ class EnhancedPolarBearBot:
     def _generate_ai_sync(self, message):
         """Synchronous AI generation (runs in thread pool)"""
         try:
-            # Inject polar bear personality into the prompt
-            polar_prompt = f"polarbear (friendly arctic bot): {message.lower()}"
+            # Create a conversation context for DialoGPT
+            # Format: Human message + separator, then let model continue
+            conversation_text = f"Human: {message}\nPolarBear:"
             
             # Tokenize input
-            inputs = self.tokenizer.encode(polar_prompt, return_tensors="pt", max_length=256, truncation=True)
+            inputs = self.tokenizer.encode(conversation_text, return_tensors="pt", max_length=256, truncation=True)
             
-            # Generate response with shorter settings to prevent blocking
+            # Generate response with proper settings for DialoGPT
             with torch.no_grad():
                 outputs = self.model.generate(
                     inputs,
-                    max_length=inputs.shape[1] + 30,  # Shorter responses to be faster
-                    num_return_sequences=1,
-                    temperature=0.8,
+                    max_new_tokens=40,  # Generate up to 40 new tokens
+                    num_beams=1,  # Greedy search for speed
+                    temperature=0.9,
                     do_sample=True,
                     pad_token_id=self.tokenizer.eos_token_id,
-                    no_repeat_ngram_size=2,
-                    early_stopping=True
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    no_repeat_ngram_size=3,
+                    repetition_penalty=1.1
                 )
             
-            # Decode response
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Decode only the new tokens (response part)
+            response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
             
-            # Extract just the bot's response (after the prompt)
-            if "polarbear (friendly arctic bot):" in response:
-                response = response.split("polarbear (friendly arctic bot):")[-1].strip()
-            
-            # Add polar bear personality touches
-            if response and len(response) > 5:
-                # Add emojis occasionally
-                if random.random() < 0.7:
-                    emojis = ["🐻‍❄️", "❄️", "🧊", "🐾"]
-                    response += f" {random.choice(emojis)}"
+            # Clean up the response
+            if response:
+                # Remove any leftover conversation markers
+                response = response.replace("Human:", "").replace("PolarBear:", "").strip()
                 
-                # Ensure lowercase casual style
-                response = response.lower().strip()
+                # Split on newlines and take first complete response
+                lines = response.split('\n')
+                response = lines[0].strip() if lines else ""
                 
-                # Remove any weird artifacts
-                response = re.sub(r'[^\w\s!?.,\'\"🐻‍❄️❄️🧊🐾]', '', response)
-                
-                return response
+                # Add polar bear personality if response is good
+                if response and len(response) > 3:
+                    # Make it lowercase and casual
+                    response = response.lower().strip()
+                    
+                    # Add emojis occasionally
+                    if random.random() < 0.7:
+                        emojis = ["🐻‍❄️", "❄️", "🧊", "🐾"]
+                        response += f" {random.choice(emojis)}"
+                    
+                    # Clean up any weird artifacts
+                    response = re.sub(r'[^\w\s!?.,\'\"🐻‍❄️❄️🧊🐾\-]', '', response)
+                    
+                    return response
                 
         except Exception as e:
             logger.error(f"AI generation error: {e}")
