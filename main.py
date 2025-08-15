@@ -197,7 +197,7 @@ async def chat(msg: discord.Message, message: str):
     async with ai_lock:
         print(f"Generating response for: {message}")
         try:  
-            content = pb.chat(message)
+            content = await pb.chat(message)
             await msg.reply(
                 content,
                 mention_author=False,

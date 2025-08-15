@@ -10,6 +10,9 @@ import re
 import logging
 import os
 import torch
+import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 logging.basicConfig(level=logging.INFO)
@@ -20,12 +23,12 @@ class EnhancedPolarBearBot:
         """Initialize the enhanced polar bear bot with AI model"""
         logger.info("🐻‍❄️ Initializing Enhanced Polar Bear Bot with AI...")
         
-        # Initialize AI model (DialoGPT-medium - better quality for Railway constraints)
-        self.model_name = "microsoft/DialoGPT-medium"
+        # Initialize AI model (DialoGPT-small - optimized for Railway constraints)
+        self.model_name = "microsoft/DialoGPT-small"
         self.use_ai = True
         
         try:
-            logger.info("📦 Loading AI model (DialoGPT-medium)...")
+            logger.info("📦 Loading AI model (DialoGPT-small)...")
             # Use CPU-only to fit in 8GB RAM constraint
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModelForCausalLM.from_pretrained(
@@ -39,12 +42,16 @@ class EnhancedPolarBearBot:
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
+            # Thread pool for non-blocking AI generation
+            self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ai-gen")
+            
             logger.info("✅ AI model loaded successfully!")
             
         except Exception as e:
             logger.error(f"❌ Failed to load AI model: {e}")
             logger.info("🔄 Falling back to predefined responses only")
             self.use_ai = False
+            self.executor = None
         
         # Predefined responses for better consistency
         self.responses = {
@@ -234,28 +241,26 @@ class EnhancedPolarBearBot:
         
         return template.format(name=name, insult=insult)
     
-    def generate_ai_response(self, message):
-        """Generate AI response with polar bear personality"""
-        if not self.use_ai:
-            return None
-            
+    def _generate_ai_sync(self, message):
+        """Synchronous AI generation (runs in thread pool)"""
         try:
             # Inject polar bear personality into the prompt
             polar_prompt = f"polarbear (friendly arctic bot): {message.lower()}"
             
             # Tokenize input
-            inputs = self.tokenizer.encode(polar_prompt, return_tensors="pt", max_length=512, truncation=True)
+            inputs = self.tokenizer.encode(polar_prompt, return_tensors="pt", max_length=256, truncation=True)
             
-            # Generate response
+            # Generate response with shorter settings to prevent blocking
             with torch.no_grad():
                 outputs = self.model.generate(
                     inputs,
-                    max_length=inputs.shape[1] + 50,  # Keep responses concise
+                    max_length=inputs.shape[1] + 30,  # Shorter responses to be faster
                     num_return_sequences=1,
                     temperature=0.8,
                     do_sample=True,
                     pad_token_id=self.tokenizer.eos_token_id,
-                    no_repeat_ngram_size=2
+                    no_repeat_ngram_size=2,
+                    early_stopping=True
                 )
             
             # Decode response
@@ -284,9 +289,30 @@ class EnhancedPolarBearBot:
             logger.error(f"AI generation error: {e}")
             
         return None
+
+    async def generate_ai_response(self, message):
+        """Generate AI response with timeout protection"""
+        if not self.use_ai or not self.executor:
+            return None
+            
+        try:
+            # Run AI generation in thread pool with timeout
+            loop = asyncio.get_event_loop()
+            future = loop.run_in_executor(self.executor, self._generate_ai_sync, message)
+            
+            # 3 second timeout to prevent Discord heartbeat issues
+            response = await asyncio.wait_for(future, timeout=3.0)
+            return response
+            
+        except asyncio.TimeoutError:
+            logger.warning("AI generation timed out, using fallback")
+            return None
+        except Exception as e:
+            logger.error(f"AI generation error: {e}")
+            return None
     
-    def chat(self, message):
-        """Main chat function with hybrid AI + predefined approach"""
+    async def chat(self, message):
+        """Main chat function with hybrid AI + predefined approach (async)"""
         try:
             intent = self.detect_intent(message)
             logger.info(f"Detected intent: {intent}")
@@ -298,12 +324,10 @@ class EnhancedPolarBearBot:
                 response = random.choice(self.responses[intent])
             else:
                 # Try AI model for general conversation
-                print("Generating using ai: ")
-                response = self.generate_ai_response(message)
+                response = await self.generate_ai_response(message)
                 
                 # Fallback to predefined if AI fails or gives poor response
                 if not response or len(response.strip()) < 3:
-                    print("no response from ai...")
                     response = random.choice([
                         "that's pretty cool! ❄️",
                         "nice! keeping it chill 🐻‍❄️",
@@ -321,12 +345,55 @@ class EnhancedPolarBearBot:
         except Exception as e:
             logger.error(f"Error in chat: {e}")
             return "sorry, my brain is a bit frozen right now... ❄️"
+    
+    def chat_sync(self, message):
+        """Synchronous wrapper for backwards compatibility"""
+        try:
+            # If we're in an async context, use the async version
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context, but this is a sync call
+                # Create a new event loop in a thread
+                def run_async():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(self.chat(message))
+                    finally:
+                        new_loop.close()
+                
+                # Use thread pool to avoid blocking
+                if hasattr(self, 'executor') and self.executor:
+                    future = self.executor.submit(run_async)
+                    try:
+                        return future.result(timeout=5.0)
+                    except:
+                        pass
+                
+                # Fallback to predefined response
+                return random.choice([
+                    "that's pretty cool! ❄️",
+                    "nice! keeping it chill 🐻‍❄️",
+                    "sounds good to me! 🐾",
+                    "word! staying frosty 🧊"
+                ])
+            else:
+                # No event loop running, safe to create one
+                return asyncio.run(self.chat(message))
+                
+        except Exception as e:
+            logger.error(f"Error in sync chat wrapper: {e}")
+            return "sorry, my brain is a bit frozen right now... ❄️"
 
     def __del__(self):
         """Cleanup when bot is destroyed"""
         try:
+            # Shutdown thread pool
+            if hasattr(self, 'executor') and self.executor:
+                self.executor.shutdown(wait=False)
+                
+            # Clear model from memory
             if hasattr(self, 'model') and self.model is not None:
-                # Clear model from memory
                 del self.model
                 del self.tokenizer
                 if torch.cuda.is_available():
