@@ -4,6 +4,8 @@ discord.py==2.5.2
 flask==3.0.2
 
 # AI/ML Dependencies - Optimized for Railway (8GB RAM)
+# NumPy compatibility fix for PyTorch
+numpy<2.0.0
 transformers==4.36.0
 torch==2.1.0
 accelerate==0.25.0

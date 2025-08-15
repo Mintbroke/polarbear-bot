@@ -298,10 +298,12 @@ class EnhancedPolarBearBot:
                 response = random.choice(self.responses[intent])
             else:
                 # Try AI model for general conversation
+                print("Generating using ai: ")
                 response = self.generate_ai_response(message)
                 
                 # Fallback to predefined if AI fails or gives poor response
                 if not response or len(response.strip()) < 3:
+                    print("no response from ai...")
                     response = random.choice([
                         "that's pretty cool! ❄️",
                         "nice! keeping it chill 🐻‍❄️",
