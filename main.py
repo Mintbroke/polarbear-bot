@@ -8,7 +8,7 @@ import random
 import asyncio
 from collections import defaultdict
 import threading
-import psycopg2
+#import psycopg2
 from gtts import gTTS
 from pydub import AudioSegment
 import emoji
@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from web import keep_alive
 
-from io import BytesIO
+#from io import BytesIO
 
 #from polarbear_enhanced import EnhancedPolarBearBot
 #############################################################################################################
