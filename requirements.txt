@@ -5,11 +5,11 @@ flask==3.0.2
 
 # AI/ML Dependencies - Optimized for Railway (8GB RAM)
 # NumPy compatibility fix for PyTorch
-numpy<2.0.0
-transformers==4.36.0
-torch==2.1.0
-accelerate==0.25.0
-tokenizers==0.15.0
+#numpy<2.0.0
+#transformers==4.36.0
+#torch==2.1.0
+#accelerate==0.25.0
+#tokenizers==0.15.0
 
 # Audio/Voice support
 PyNaCl==1.5.0
@@ -17,7 +17,7 @@ gTTS==2.5.4
 pydub==0.25.1
 
 # Database support
-psycopg2-binary==2.9.6
+#psycopg2-binary==2.9.6
 
 # Text processing
 emoji==2.2.0
