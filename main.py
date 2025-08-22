@@ -22,10 +22,10 @@ from web import keep_alive
 
 from io import BytesIO
 
-from polarbear_enhanced import EnhancedPolarBearBot
+#from polarbear_enhanced import EnhancedPolarBearBot
 #############################################################################################################
 #-------------------------------------------PRE-DEFINED-VALUES----------------------------------------------#
-pb = EnhancedPolarBearBot()
+#pb = EnhancedPolarBearBot()
 
 # vc variables:
 VOICE = False
@@ -246,6 +246,7 @@ async def voice(interaction: discord.Interaction):
 
 @bot.event
 async def on_message(d_message: discord.Message):
+    '''
     if(bot.user.mentioned_in(d_message) and not d_message.mention_everyone):
         print(f"received message for bot: {d_message.content}")
         text = d_message.content
@@ -253,7 +254,7 @@ async def on_message(d_message: discord.Message):
         await chat(d_message, text)
     else:
         print("no bot ping")
-
+    '''
     if(d_message.author.bot or not VOICE):
         return
     global previous_author
