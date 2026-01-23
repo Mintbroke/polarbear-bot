@@ -3,4 +3,4 @@ builder = "dockerfile"
 
 [deploy]
 restartPolicyType = "always"
-startCommand = "python main.py"
+startCommand = "python -u main.py"

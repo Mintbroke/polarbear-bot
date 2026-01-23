@@ -22,4 +22,4 @@ COPY . .
 EXPOSE 8000
 
 # Run the Discord bot
-CMD ["python", "main.py"]
+CMD ["python", "-u", "main.py"]
