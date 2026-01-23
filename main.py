@@ -259,7 +259,7 @@ async def on_message(d_message: discord.Message):
     '''
     if(d_message.author.id == GOAT_ID and "goat" in d_message.content.lower()):
         channel = d_message.channel
-        await channel.send(f"{d_message.author.mention} so goated!")
+        await channel.send(f"{d_message.author.mention} so goat-ed!")
         
     if(d_message.author.bot or not VOICE):
         return
