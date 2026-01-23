@@ -35,7 +35,7 @@ AUTHOR_LOCK = asyncio.Lock()
 previous_author = None
 voice_speed = 1.5
 
-GOAT_ID = os.getenv("GOAT_ID")
+GOAT_ID = int(os.getenv("GOAT_ID"))
 glaze_phrase = "so goat so smart so intelligent so rich so handsome so sexy so cute so courageous so adventurous so creative so amiable so charismatic so authentic so calm so cheerful so good looking so charming so compassionate so dynamic so adaptable so agreeable so amazing so keen so genius so clever so ambitious so bright so diligent so passionate so admirable so affable so affectionate so amicable so considerate so energetic so fabulous so generous so nice so buffed so cool so hot so insightful so thoughtful so brave so loyal so sincere so witty"
 glaze_words = set(glaze_phrase.split(" "))
 
@@ -260,9 +260,7 @@ async def on_message(d_message: discord.Message):
     else:
         print("no bot ping")
     '''
-    print(f"on_message received: {d_message.content} from {d_message.author}, sender_id: {d_message.author.id}, goat_id: {GOAT_ID}")
     if(d_message.author.id == GOAT_ID):
-        print(f"user sent: {d_message.content}")
         channel = d_message.channel
         if(any(word in d_message.content.lower() for word in glaze_words)):
             await channel.send(f"{d_message.author.mention} {glaze_phrase}")
