@@ -261,6 +261,7 @@ async def on_message(d_message: discord.Message):
         print("no bot ping")
     '''
     if(d_message.author.id == GOAT_ID):
+        print(f"user sent: {d_message.content}")
         channel = d_message.channel
         if(any(word in d_message.content.lower() for word in glaze_words)):
             await channel.send(f"{d_message.author.mention} {glaze_phrase}")
