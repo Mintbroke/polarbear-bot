@@ -35,6 +35,8 @@ AUTHOR_LOCK = asyncio.Lock()
 previous_author = None
 voice_speed = 1.5
 
+GOAT_ID = os.getenv("GOAT_ID")
+
 opus_lib = ctypes.util.find_library("opus")
 print("ctypes.util.find_library('opus') →", opus_lib)
 if not opus_lib:
@@ -255,6 +257,10 @@ async def on_message(d_message: discord.Message):
     else:
         print("no bot ping")
     '''
+    if(d_message.author.id == GOAT_ID and "goat" in d_message.content.lower()):
+        channel = d_message.channel
+        await channel.send(f"{d_message.author.mention} so goated!")
+        
     if(d_message.author.bot or not VOICE):
         return
     global previous_author
