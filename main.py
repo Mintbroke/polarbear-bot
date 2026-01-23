@@ -257,10 +257,14 @@ async def on_message(d_message: discord.Message):
     else:
         print("no bot ping")
     '''
-    if(d_message.author.id == GOAT_ID and "goat" in d_message.content.lower()):
+    if(d_message.author.id == GOAT_ID):
         channel = d_message.channel
-        await channel.send(f"{d_message.author.mention} so goat-ed!")
-        
+        glaze_word = "goat-ed"
+        if("goat" in d_message.content.lower()):
+            await channel.send(f"{d_message.author.mention} sooooo {glaze_word}!")
+        elif("glaze" in d_message.content.lower()):
+            glaze_word = "smart"
+            await channel.send(f"{d_message.author.mention} sooooo {glaze_word}!")
     if(d_message.author.bot or not VOICE):
         return
     global previous_author
