@@ -36,6 +36,9 @@ previous_author = None
 voice_speed = 1.5
 
 GOAT_ID = os.getenv("GOAT_ID")
+glaze_phrase = "so goat so smart so intelligent so rich so handsome so sexy so cute so courageous so adventurous so creative so amiable so charismatic so authentic so calm so cheerful so good looking so charming so compassionate so dynamic so adaptable so agreeable so amazing so keen so genius so clever so ambitious so bright so diligent so passionate so admirable so affable so affectionate so amicable so considerate so energetic so fabulous so generous so nice so buffed so cool so hot so insightful so thoughtful so brave so loyal so sincere so witty"
+glaze_words = set(glaze_phrase.split(" "))
+
 
 opus_lib = ctypes.util.find_library("opus")
 print("ctypes.util.find_library('opus') →", opus_lib)
@@ -259,12 +262,8 @@ async def on_message(d_message: discord.Message):
     '''
     if(d_message.author.id == GOAT_ID):
         channel = d_message.channel
-        glaze_word = "goat-ed"
-        if("goat" in d_message.content.lower()):
-            await channel.send(f"{d_message.author.mention} sooooo {glaze_word}!")
-        elif("glaze" in d_message.content.lower()):
-            glaze_word = "smart"
-            await channel.send(f"{d_message.author.mention} sooooo {glaze_word}!")
+        if(any(word in d_message.content.lower() for word in glaze_words)):
+            await channel.send(f"{d_message.author.mention} {glaze_phrase}")
     if(d_message.author.bot or not VOICE):
         return
     global previous_author
