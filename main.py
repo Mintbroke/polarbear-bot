@@ -260,6 +260,7 @@ async def on_message(d_message: discord.Message):
     else:
         print("no bot ping")
     '''
+    print(f"on_message received: {d_message.content} from {d_message.author}, id_match: {d_message.author.id == GOAT_ID}")
     if(d_message.author.id == GOAT_ID):
         print(f"user sent: {d_message.content}")
         channel = d_message.channel
