@@ -37,7 +37,8 @@ voice_speed = 1.5
 
 GOAT_ID = int(os.getenv("GOAT_ID"))
 glaze_phrase = "so good so goat so smart so intelligent so rich so handsome so sexy so cute so courageous so adventurous so creative so amiable so charismatic so authentic so calm so cheerful so good looking so charming so compassionate so dynamic so adaptable so agreeable so amazing so keen so genius so clever so ambitious so bright so diligent so passionate so admirable so affable so affectionate so amicable so considerate so energetic so fabulous so generous so nice so buffed so cool so hot so insightful so thoughtful so brave so loyal so sincere so witty"
-glaze_words = set(glaze_phrase.split(" ")).remove("so")
+glaze_words = set(glaze_phrase.split(" "))
+glaze_words.remove("so")
 
 
 opus_lib = ctypes.util.find_library("opus")
