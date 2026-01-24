@@ -198,6 +198,11 @@ async def pick(interaction: discord.Interaction, options: str):
     await interaction.response.send_message(f"choices: {', '.join(options_list)}\nbot picks: {random.choice(options_list)}")
     #await interaction.followup.send(f"Bot picks: {random.choice(options_list)}")
 
+@bot.tree.command(name="add_word", description="/add_word [word]")
+async def pick(interaction: discord.Interaction, word: str):
+    glaze_words.add(word.lower())
+    await interaction.response.send_message(f"glaze word {word} added!", ephemeral=True)
+
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
     async with ai_lock:
