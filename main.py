@@ -211,7 +211,7 @@ def emoji_bar(percent: float, length: int = 10) -> str:
     percent = max(0, min(percent, 100))  # clamp 0–100
     filled = round((percent / 100) * length)
     empty = length - filled
-    return "🟩" * filled + "⬜" * empty + f" {percent:.0f}%"
+    return "🟩" * filled + "⬜" * empty + f" {percent:.2f}%"
 
 
 @bot.tree.command(name="count_down", description="/count_down")
