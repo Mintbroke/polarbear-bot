@@ -213,12 +213,7 @@ async def pick(interaction: discord.Interaction, word: str):
 def lerp(a, b, t):  # linear interpolate
     return int(a + (b - a) * t)
 
-def make_progress_png(
-    percent: float,
-    width: int = 720,
-    height: int = 72,
-    padding: int = 10,
-):
+def make_progress_png(percent: float, width: int = 720, height: int = 72, padding: int = 10):
     percent = max(0.0, min(100.0, percent))
     p = percent / 100.0
 
