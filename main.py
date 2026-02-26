@@ -207,11 +207,47 @@ async def pick(interaction: discord.Interaction, word: str):
     await interaction.response.send_message(f"glaze word {word} added!", ephemeral=True)
 
 
-def emoji_bar(percent: float, length: int = 10) -> str:
-    percent = max(0, min(percent, 100))  # clamp 0–100
-    filled = round((percent / 100) * length)
-    empty = length - filled
-    return "🟩" * filled + "⬜" * empty + f" {percent:.2f}%"
+def make_progress_png(
+    percent: float,
+    width: int = 600,
+    height: int = 60,
+    padding: int = 6,
+    radius: int = 16,
+):
+    # Clamp
+    percent = max(0.0, min(100.0, percent))
+    p = percent / 100.0
+
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Outer track
+    x0, y0 = padding, padding
+    x1, y1 = width - padding, height - padding
+    track = (x0, y0, x1, y1)
+
+    # Colors (RGBA)
+    track_color = (70, 70, 70, 255)
+    fill_color = (60, 200, 120, 255)
+
+    # Draw track (rounded)
+    draw.rounded_rectangle(track, radius=radius, fill=track_color)
+
+    # Filled portion (rounded; small fix for tiny % so it doesn't look weird)
+    fill_w = int((x1 - x0) * p)
+    if fill_w > 0:
+        fill_rect = (x0, y0, x0 + fill_w, y1)
+        # If not full, use smaller radius on the right edge by drawing a normal rect on top.
+        draw.rounded_rectangle(fill_rect, radius=radius, fill=fill_color)
+        if fill_w < (x1 - x0):
+            # Square off the right end so it doesn't round early
+            draw.rectangle((x0 + fill_w - radius, y0, x0 + fill_w, y1), fill=fill_color)
+
+    # Export to bytes
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
 
 
 @bot.tree.command(name="count_down", description="/count_down")
@@ -221,8 +257,18 @@ async def pick(interaction: discord.Interaction):
     now = datetime.now()
     delta = target - now
     total_delta = target - start
-    percentage_done = (1 - delta/total_delta) * 100
-    await interaction.response.send_message(f"{delta.days} days left until D-Day!\n{emoji_bar(percentage_done)}")
+    percentage_done = (1 - delta.days / total_delta.days) * 100
+
+    png = make_progress_png(percent)
+    file = discord.File(png, filename="progress.png")
+
+    embed = discord.Embed(
+        title=f"{delta.days} Left!",
+        description=f"**{percentage_done:.2f}%** Complete!"
+    )
+    embed.set_image(url="attachment://progress.png")
+
+    await interaction.response.send_message(embed=embed, file=file)
 
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
