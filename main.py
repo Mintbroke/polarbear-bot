@@ -337,7 +337,7 @@ async def pick(interaction: discord.Interaction):
     total_delta = target - start
     percentage_done = (1 - delta.days / total_delta.days) * 100
 
-    png = make_progress_png(percentage_done)
+    png = make_progress_png_modern(percentage_done)
     file = discord.File(png, filename="progress.png")
 
     embed = discord.Embed(
