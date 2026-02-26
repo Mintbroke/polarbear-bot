@@ -213,7 +213,7 @@ async def pick(interaction: discord.Interaction, word: str):
 def lerp(a, b, t):  # linear interpolate
     return int(a + (b - a) * t)
 
-def make_progress_png(
+def make_progress_png_gradient(
     percent: float,
     width: int = 720,
     height: int = 72,
@@ -222,7 +222,6 @@ def make_progress_png(
     percent = max(0.0, min(100.0, percent))
     p = percent / 100.0
 
-    # Transparent background so it blends in embeds
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     base = Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
@@ -230,15 +229,18 @@ def make_progress_png(
     x1, y1 = width - padding, height - padding
     w = x1 - x0
     h = y1 - y0
-    r = h // 2  # perfect pill radius
+    r = h // 2
 
-    # Colors (tweak if you want)
+    # Colors (Discord dark friendly)
     track_color = (36, 38, 44, 255)
-    fill_color  = (80, 200, 170, 255)
-    border_color = (255, 255, 255, 28)
     shadow_color = (0, 0, 0, 120)
+    divider_color = (255, 255, 255, 35)
 
-    # Soft shadow behind the track
+    # Gradient colors (teal → blue)
+    g0 = (80, 220, 170, 255)
+    g1 = (80, 140, 255, 255)
+
+    # Shadow
     shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     sd = ImageDraw.Draw(shadow)
     sd.rounded_rectangle((x0, y0 + 3, x1, y1 + 3), radius=r, fill=shadow_color)
@@ -247,27 +249,38 @@ def make_progress_png(
 
     d = ImageDraw.Draw(base)
 
-    # Track (pill)
+    # Track
     d.rounded_rectangle((x0, y0, x1, y1), radius=r, fill=track_color)
-    d.rounded_rectangle((x0, y0, x1, y1), radius=r, outline=border_color, width=2)
 
-    # Fill (pixel-accurate)
+    # ---- Gradient Fill ----
     fill_w = int(w * p)
     if fill_w > 0:
+        grad = Image.new("RGBA", (fill_w, h), (0, 0, 0, 0))
+        gp = grad.load()
+
+        for xx in range(fill_w):
+            t = xx / max(1, fill_w - 1)
+            rcol = lerp(g0[0], g1[0], t)
+            gcol = lerp(g0[1], g1[1], t)
+            bcol = lerp(g0[2], g1[2], t)
+            for yy in range(h):
+                gp[xx, yy] = (rcol, gcol, bcol, 255)
+
         fill_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        fd = ImageDraw.Draw(fill_layer)
+        fill_layer.alpha_composite(grad, dest=(x0, y0))
 
-        # Draw fill as a rounded rect first
-        fx1 = x0 + fill_w
-        fd.rounded_rectangle((x0, y0, fx1, y1), radius=r, fill=fill_color)
+        mask = Image.new("L", (width, height), 0)
+        md = ImageDraw.Draw(mask)
+        md.rounded_rectangle((x0, y0, x0 + fill_w, y1), radius=r, fill=255)
 
-        # If not 100%, square off the right end so it looks “clear”
-        if fill_w < w:
-            fd.rectangle((max(x0, fx1 - r), y0, fx1, y1), fill=fill_color)
+        base = Image.composite(fill_layer, base, mask)
 
-        base.alpha_composite(fill_layer)
+    # ---- 10% Dividers ----
+    for i in range(1, 10):
+        x = x0 + int(w * (i / 10))
+        d.line((x, y0 + 8, x, y1 - 8), fill=divider_color, width=2)
 
-    # Export PNG bytes
+    # Export
     buf = io.BytesIO()
     base.save(buf, format="PNG")
     buf.seek(0)
