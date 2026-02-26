@@ -213,117 +213,61 @@ async def pick(interaction: discord.Interaction, word: str):
 def lerp(a, b, t):  # linear interpolate
     return int(a + (b - a) * t)
 
-def make_progress_png_modern(
+def make_progress_png(
     percent: float,
     width: int = 720,
-    height: int = 96,
-    padding: int = 14,
-    radius: int = 22,
-    show_text: bool = True,
+    height: int = 72,
+    padding: int = 10,
 ):
     percent = max(0.0, min(100.0, percent))
     p = percent / 100.0
 
+    # Transparent background so it blends in embeds
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     base = Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
-    # Geometry
     x0, y0 = padding, padding
     x1, y1 = width - padding, height - padding
-    track_w = x1 - x0
-    track_h = y1 - y0
+    w = x1 - x0
+    h = y1 - y0
+    r = h // 2  # perfect pill radius
 
-    # Colors (tuned for Discord dark)
-    track = (36, 38, 44, 255)        # dark track
-    border = (255, 255, 255, 26)     # subtle border
-    shadow = (0, 0, 0, 120)          # drop shadow
+    # Colors (tweak if you want)
+    track_color = (36, 38, 44, 255)
+    fill_color  = (80, 200, 170, 255)
+    border_color = (255, 255, 255, 28)
+    shadow_color = (0, 0, 0, 120)
 
-    # Gradient endpoints (modern teal -> blue)
-    g0 = (80, 220, 170, 255)
-    g1 = (80, 140, 255, 255)
+    # Soft shadow behind the track
+    shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    sd.rounded_rectangle((x0, y0 + 3, x1, y1 + 3), radius=r, fill=shadow_color)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(8))
+    base.alpha_composite(shadow)
 
-    # ---- Shadow (soft) ----
-    shadow_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow_layer)
-    sd.rounded_rectangle((x0, y0 + 3, x1, y1 + 3), radius=radius, fill=shadow)
-    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(8))
-    base.alpha_composite(shadow_layer)
-
-    # ---- Track ----
     d = ImageDraw.Draw(base)
-    d.rounded_rectangle((x0, y0, x1, y1), radius=radius, fill=track)
-    d.rounded_rectangle((x0, y0, x1, y1), radius=radius, outline=border, width=2)
 
-    # ---- Fill with gradient ----
-    fill_w = int(track_w * p)
+    # Track (pill)
+    d.rounded_rectangle((x0, y0, x1, y1), radius=r, fill=track_color)
+    d.rounded_rectangle((x0, y0, x1, y1), radius=r, outline=border_color, width=2)
+
+    # Fill (pixel-accurate)
+    fill_w = int(w * p)
     if fill_w > 0:
         fill_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         fd = ImageDraw.Draw(fill_layer)
 
-        # Create a horizontal gradient strip just for the fill width
-        grad = Image.new("RGBA", (fill_w, track_h), (0, 0, 0, 0))
-        gp = grad.load()
-        for xx in range(fill_w):
-            t = xx / max(1, (fill_w - 1))
-            r = lerp(g0[0], g1[0], t)
-            g = lerp(g0[1], g1[1], t)
-            b = lerp(g0[2], g1[2], t)
-            for yy in range(track_h):
-                gp[xx, yy] = (r, g, b, 255)
+        # Draw fill as a rounded rect first
+        fx1 = x0 + fill_w
+        fd.rounded_rectangle((x0, y0, fx1, y1), radius=r, fill=fill_color)
 
-        # Paste gradient into position
-        fill_layer.alpha_composite(grad, dest=(x0, y0))
+        # If not 100%, square off the right end so it looks “clear”
+        if fill_w < w:
+            fd.rectangle((max(x0, fx1 - r), y0, fx1, y1), fill=fill_color)
 
-        # Clip to rounded rectangle fill shape
-        mask = Image.new("L", (width, height), 0)
-        md = ImageDraw.Draw(mask)
+        base.alpha_composite(fill_layer)
 
-        # If not full, reduce right-side rounding so it doesn’t “cap” early
-        rrad = radius if fill_w >= track_h else max(6, int(radius * 0.6))
-        md.rounded_rectangle((x0, y0, x0 + fill_w, y1), radius=rrad, fill=255)
-
-        # Composite with mask
-        base = Image.composite(fill_layer, base, mask.convert("RGBA").split()[-1])
-
-        # ---- Gloss highlight ----
-        gloss = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        gd = ImageDraw.Draw(gloss)
-
-        # top half highlight
-        gx0, gy0 = x0 + 2, y0 + 2
-        gx1, gy1 = x0 + fill_w - 2, y0 + track_h // 2
-        if gx1 > gx0:
-            gd.rounded_rectangle(
-                (gx0, gy0, gx1, gy1),
-                radius=max(10, radius - 8),
-                fill=(255, 255, 255, 28)
-            )
-        base.alpha_composite(gloss)
-
-    # ---- Bigger Text ----
-    if show_text:
-        text_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        td = ImageDraw.Draw(text_layer)
-
-        # Increase this multiplier to make it bigger
-        font_size = int(track_h * 0.75)
-
-        font = ImageFont.truetype("fonts/Inter-Bold.ttf", font_size)
-
-        label = f"{percent:.0f}%"
-
-        bbox = td.textbbox((0, 0), label, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-
-        tx = x0 + (track_w - tw) // 2
-        ty = y0 + (track_h - th) // 2
-
-        td.text((tx, ty), label, font=font, fill=(255, 255, 255, 255))
-
-        base.alpha_composite(text_layer)
-
-    # Export
+    # Export PNG bytes
     buf = io.BytesIO()
     base.save(buf, format="PNG")
     buf.seek(0)
@@ -339,7 +283,7 @@ async def pick(interaction: discord.Interaction):
     total_delta = target - start
     percentage_done = (1 - delta.days / total_delta.days) * 100
 
-    png = make_progress_png_modern(percentage_done)
+    png = make_progress_png(percentage_done)
     file = discord.File(png, filename="progress.png")
 
     embed = discord.Embed(
