@@ -213,7 +213,7 @@ async def pick(interaction: discord.Interaction, word: str):
 def lerp(a, b, t):  # linear interpolate
     return int(a + (b - a) * t)
 
-def make_progress_png_gradient(
+def make_progress_png(
     percent: float,
     width: int = 720,
     height: int = 72,
