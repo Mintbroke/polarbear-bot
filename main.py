@@ -300,24 +300,26 @@ def make_progress_png_modern(
             )
         base.alpha_composite(gloss)
 
-    # ---- Optional text ----
+    # ---- Bigger Text ----
     if show_text:
         text_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         td = ImageDraw.Draw(text_layer)
 
-        # Use default font (no extra dependency). If you want a real modern font,
-        # load a .ttf in your project and use ImageFont.truetype(...)
-        font = ImageFont.load_default()
+        # Increase this multiplier to make it bigger
+        font_size = int(track_h * 0.75)
 
-        label = f"{percent:.1f}%"
-        # Position: right side, vertically centered
-        tw, th = td.textbbox((0, 0), label, font=font)[2:]
-        tx = x1 - tw - 14
+        font = ImageFont.truetype("fonts/Inter-Bold.ttf", font_size)
+
+        label = f"{percent:.0f}%"
+
+        bbox = td.textbbox((0, 0), label, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        tx = x0 + (track_w - tw) // 2
         ty = y0 + (track_h - th) // 2
 
-        # Soft text shadow
-        td.text((tx + 1, ty + 1), label, font=font, fill=(0, 0, 0, 160))
-        td.text((tx, ty), label, font=font, fill=(255, 255, 255, 230))
+        td.text((tx, ty), label, font=font, fill=(255, 255, 255, 255))
 
         base.alpha_composite(text_layer)
 
