@@ -40,6 +40,7 @@ glaze_phrase = "so good so goat so smart so intelligent so rich so handsome so s
 glaze_words = set(glaze_phrase.split(" "))
 glaze_words.remove("so")
 
+date_str = "2027-04-12"
 
 opus_lib = ctypes.util.find_library("opus")
 print("ctypes.util.find_library('opus') →", opus_lib)
@@ -202,6 +203,13 @@ async def pick(interaction: discord.Interaction, options: str):
 async def pick(interaction: discord.Interaction, word: str):
     glaze_words.add(word.lower())
     await interaction.response.send_message(f"glaze word {word} added!", ephemeral=True)
+
+@bot.tree.command(name="count_down", description="/count_down")
+async def pick(interaction: discord.Interaction):
+    target = datetime.strptime(date_str, "%Y-%m-%d")
+    now = datetime.now()
+    delta = target - now
+    await interaction.response.send_message(f"{delta.days} days left until D-Day!")
 
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
