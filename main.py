@@ -20,6 +20,9 @@ from zoneinfo import ZoneInfo
 
 from web import keep_alive
 
+from PIL import Image, ImageDraw
+import io
+
 #from io import BytesIO
 
 #from polarbear_enhanced import EnhancedPolarBearBot
