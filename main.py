@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from web import keep_alive
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import io
 
 #from io import BytesIO
@@ -210,39 +210,120 @@ async def pick(interaction: discord.Interaction, word: str):
     await interaction.response.send_message(f"glaze word {word} added!", ephemeral=True)
 
 
-def make_progress_png(percent: float, width: int = 600, height: int = 60, padding: int = 6, radius: int = 16):
-    # Clamp
+def lerp(a, b, t):  # linear interpolate
+    return int(a + (b - a) * t)
+
+def make_progress_png_modern(
+    percent: float,
+    width: int = 720,
+    height: int = 96,
+    padding: int = 14,
+    radius: int = 22,
+    show_text: bool = True,
+):
     percent = max(0.0, min(100.0, percent))
     p = percent / 100.0
 
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    base = Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
-    # Outer track
+    # Geometry
     x0, y0 = padding, padding
     x1, y1 = width - padding, height - padding
-    track = (x0, y0, x1, y1)
+    track_w = x1 - x0
+    track_h = y1 - y0
 
-    # Colors (RGBA)
-    track_color = (70, 70, 70, 255)
-    fill_color = (60, 200, 120, 255)
+    # Colors (tuned for Discord dark)
+    track = (36, 38, 44, 255)        # dark track
+    border = (255, 255, 255, 26)     # subtle border
+    shadow = (0, 0, 0, 120)          # drop shadow
 
-    # Draw track (rounded)
-    draw.rounded_rectangle(track, radius=radius, fill=track_color)
+    # Gradient endpoints (modern teal -> blue)
+    g0 = (80, 220, 170, 255)
+    g1 = (80, 140, 255, 255)
 
-    # Filled portion (rounded; small fix for tiny % so it doesn't look weird)
-    fill_w = int((x1 - x0) * p)
+    # ---- Shadow (soft) ----
+    shadow_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow_layer)
+    sd.rounded_rectangle((x0, y0 + 3, x1, y1 + 3), radius=radius, fill=shadow)
+    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(8))
+    base.alpha_composite(shadow_layer)
+
+    # ---- Track ----
+    d = ImageDraw.Draw(base)
+    d.rounded_rectangle((x0, y0, x1, y1), radius=radius, fill=track)
+    d.rounded_rectangle((x0, y0, x1, y1), radius=radius, outline=border, width=2)
+
+    # ---- Fill with gradient ----
+    fill_w = int(track_w * p)
     if fill_w > 0:
-        fill_rect = (x0, y0, x0 + fill_w, y1)
-        # If not full, use smaller radius on the right edge by drawing a normal rect on top.
-        draw.rounded_rectangle(fill_rect, radius=radius, fill=fill_color)
-        if fill_w < (x1 - x0):
-            # Square off the right end so it doesn't round early
-            draw.rectangle((x0 + fill_w - radius, y0, x0 + fill_w, y1), fill=fill_color)
+        fill_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        fd = ImageDraw.Draw(fill_layer)
 
-    # Export to bytes
+        # Create a horizontal gradient strip just for the fill width
+        grad = Image.new("RGBA", (fill_w, track_h), (0, 0, 0, 0))
+        gp = grad.load()
+        for xx in range(fill_w):
+            t = xx / max(1, (fill_w - 1))
+            r = lerp(g0[0], g1[0], t)
+            g = lerp(g0[1], g1[1], t)
+            b = lerp(g0[2], g1[2], t)
+            for yy in range(track_h):
+                gp[xx, yy] = (r, g, b, 255)
+
+        # Paste gradient into position
+        fill_layer.alpha_composite(grad, dest=(x0, y0))
+
+        # Clip to rounded rectangle fill shape
+        mask = Image.new("L", (width, height), 0)
+        md = ImageDraw.Draw(mask)
+
+        # If not full, reduce right-side rounding so it doesn’t “cap” early
+        rrad = radius if fill_w >= track_h else max(6, int(radius * 0.6))
+        md.rounded_rectangle((x0, y0, x0 + fill_w, y1), radius=rrad, fill=255)
+
+        # Composite with mask
+        base = Image.composite(fill_layer, base, mask.convert("RGBA").split()[-1])
+
+        # ---- Gloss highlight ----
+        gloss = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(gloss)
+
+        # top half highlight
+        gx0, gy0 = x0 + 2, y0 + 2
+        gx1, gy1 = x0 + fill_w - 2, y0 + track_h // 2
+        if gx1 > gx0:
+            gd.rounded_rectangle(
+                (gx0, gy0, gx1, gy1),
+                radius=max(10, radius - 8),
+                fill=(255, 255, 255, 28)
+            )
+        base.alpha_composite(gloss)
+
+    # ---- Optional text ----
+    if show_text:
+        text_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        td = ImageDraw.Draw(text_layer)
+
+        # Use default font (no extra dependency). If you want a real modern font,
+        # load a .ttf in your project and use ImageFont.truetype(...)
+        font = ImageFont.load_default()
+
+        label = f"{percent:.1f}%"
+        # Position: right side, vertically centered
+        tw, th = td.textbbox((0, 0), label, font=font)[2:]
+        tx = x1 - tw - 14
+        ty = y0 + (track_h - th) // 2
+
+        # Soft text shadow
+        td.text((tx + 1, ty + 1), label, font=font, fill=(0, 0, 0, 160))
+        td.text((tx, ty), label, font=font, fill=(255, 255, 255, 230))
+
+        base.alpha_composite(text_layer)
+
+    # Export
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    base.save(buf, format="PNG")
     buf.seek(0)
     return buf
 
@@ -260,7 +341,7 @@ async def pick(interaction: discord.Interaction):
     file = discord.File(png, filename="progress.png")
 
     embed = discord.Embed(
-        title=f"{delta.days} Left!",
+        title=f"{delta.days} Days Left!",
         description=f"**{percentage_done:.2f}%** Complete!"
     )
     embed.set_image(url="attachment://progress.png")
