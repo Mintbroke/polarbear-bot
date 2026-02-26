@@ -213,7 +213,8 @@ async def pick(interaction: discord.Interaction):
     now = datetime.now()
     delta = target - now
     total_delta = target - start
-    await interaction.response.send_message(f"{delta.days} days left until D-Day!\nCurrently {delta * 100 / total_delta}% done!")
+    percentage_done = (1 - delta/total_delta) * 100
+    await interaction.response.send_message(f"{delta.days} days left until D-Day!\nCurrently {percentage_done:.2f}% done!")
 
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
