@@ -210,13 +210,7 @@ async def pick(interaction: discord.Interaction, word: str):
     await interaction.response.send_message(f"glaze word {word} added!", ephemeral=True)
 
 
-def make_progress_png(
-    percent: float,
-    width: int = 600,
-    height: int = 60,
-    padding: int = 6,
-    radius: int = 16,
-):
+def make_progress_png(percent: float, width: int = 600, height: int = 60, padding: int = 6, radius: int = 16):
     # Clamp
     percent = max(0.0, min(100.0, percent))
     p = percent / 100.0
@@ -262,7 +256,7 @@ async def pick(interaction: discord.Interaction):
     total_delta = target - start
     percentage_done = (1 - delta.days / total_delta.days) * 100
 
-    png = make_progress_png(percent)
+    png = make_progress_png(percentage_done)
     file = discord.File(png, filename="progress.png")
 
     embed = discord.Embed(
