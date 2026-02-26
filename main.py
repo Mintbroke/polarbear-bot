@@ -206,6 +206,14 @@ async def pick(interaction: discord.Interaction, word: str):
     glaze_words.add(word.lower())
     await interaction.response.send_message(f"glaze word {word} added!", ephemeral=True)
 
+
+def emoji_bar(percent: float, length: int = 10) -> str:
+    percent = max(0, min(percent, 100))  # clamp 0–100
+    filled = round((percent / 100) * length)
+    empty = length - filled
+    return "🟩" * filled + "⬜" * empty + f" {percent:.0f}%"
+
+
 @bot.tree.command(name="count_down", description="/count_down")
 async def pick(interaction: discord.Interaction):
     target = datetime.strptime(end_d_date, "%Y-%m-%d")
@@ -214,7 +222,7 @@ async def pick(interaction: discord.Interaction):
     delta = target - now
     total_delta = target - start
     percentage_done = (1 - delta/total_delta) * 100
-    await interaction.response.send_message(f"{delta.days} days left until D-Day!\nCurrently {percentage_done:.2f}% done!")
+    await interaction.response.send_message(f"{delta.days} days left until D-Day!\n{emoji_bar(percentage_done)}")
 
 #@bot.tree.command(name="chat", description="/chat [message]")
 async def chat(msg: discord.Message, message: str):
