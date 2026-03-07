@@ -398,6 +398,8 @@ async def on_message(d_message: discord.Message):
                 vc.stop()
 
             source = discord.FFmpegPCMAudio(fast_filename)
+            if vc is None:
+                return
             vc.play(source)
 
 def replace_mentions_and_emojis(message):
