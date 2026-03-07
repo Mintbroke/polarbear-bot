@@ -13,6 +13,7 @@ flask==3.0.2
 
 # Audio/Voice support
 PyNaCl==1.5.0
+davey
 gTTS==2.5.4
 pydub==0.25.1
 
