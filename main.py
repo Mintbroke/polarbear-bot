@@ -26,10 +26,44 @@ from web import keep_alive
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import io
 
+import urllib.request
+import zipfile
+from pathlib import Path
+
+VOSK_MODEL_DIR = Path("vosk-model")
+VOSK_MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+
+def _ensure_vosk_model(model_dir: Path) -> Path:
+    """Download the Vosk model if the directory is empty or missing."""
+    # Check if directory has actual model files (not just empty subdirs)
+    if model_dir.exists() and any(model_dir.glob("*.cfg")) or (model_dir / "am" / "final.mdl").exists():
+        return model_dir
+
+    print(f"Vosk model not found in {model_dir}, downloading (~40 MB)...")
+    zip_path = model_dir.with_suffix(".zip")
+    urllib.request.urlretrieve(VOSK_MODEL_URL, zip_path)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(model_dir.parent)
+
+    # The zip extracts to vosk-model-small-en-us-0.15/, move contents into vosk-model/
+    extracted_name = VOSK_MODEL_URL.split("/")[-1].replace(".zip", "")
+    extracted_path = model_dir.parent / extracted_name
+    if extracted_path.exists() and extracted_path != model_dir:
+        import shutil
+        if model_dir.exists():
+            shutil.rmtree(model_dir)
+        extracted_path.rename(model_dir)
+
+    zip_path.unlink(missing_ok=True)
+    print(f"Vosk model ready at: {model_dir}")
+    return model_dir
+
 try:
     from vosk import KaldiRecognizer, Model, SetLogLevel
     SetLogLevel(-1)
-    vosk_model = Model("vosk-model")
+    _ensure_vosk_model(VOSK_MODEL_DIR)
+    vosk_model = Model(str(VOSK_MODEL_DIR))
     print("Vosk model loaded successfully")
 except Exception as e:
     vosk_model = None
