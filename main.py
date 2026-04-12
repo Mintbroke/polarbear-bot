@@ -127,9 +127,10 @@ def _safe_decode_packet(self, packet):
         _patch_err_count += 1
         if _patch_err_count <= 5:
             print(f"[patch] OpusError #{_patch_err_count}: {e}")
-        # Reset the decoder so future packets have a chance
-        self._decoder = discord.opus.Decoder()
-        return packet, b''
+        # Return a 20ms silence frame to maintain audio timing
+        # 48kHz * 2ch * 2bytes * 0.02s = 3840 bytes
+        silence = b'\x00' * 3840
+        return packet, silence
 
 _vr_opus.PacketDecoder._decode_packet = _safe_decode_packet
 print("Patched voice_recv PacketDecoder for opus error tolerance")
@@ -631,10 +632,6 @@ class TranscribeSink(voice_recv.AudioSink):
                       f"patch_ok={_patch_ok_count}, patch_err={_patch_err_count}")
 
         if user is None or not TRANSCRIBE or vosk_model is None:
-            return
-
-        # Skip empty PCM (from corrupted packets caught by the monkey-patch)
-        if not data.pcm:
             return
 
         with self._lock:
