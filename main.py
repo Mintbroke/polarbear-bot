@@ -112,12 +112,23 @@ print(discord.opus.is_loaded())
 # instead of crashing the router thread
 import discord.ext.voice_recv.opus as _vr_opus
 _original_decode_packet = _vr_opus.PacketDecoder._decode_packet
+_patch_ok_count = 0
+_patch_err_count = 0
 
 def _safe_decode_packet(self, packet):
+    global _patch_ok_count, _patch_err_count
     try:
-        return _original_decode_packet(self, packet)
-    except discord.opus.OpusError:
-        # Return empty PCM instead of crashing the router thread
+        result = _original_decode_packet(self, packet)
+        _patch_ok_count += 1
+        if _patch_ok_count <= 3:
+            print(f"[patch] decode OK #{_patch_ok_count}: pcm_len={len(result[1])}")
+        return result
+    except discord.opus.OpusError as e:
+        _patch_err_count += 1
+        if _patch_err_count <= 5:
+            print(f"[patch] OpusError #{_patch_err_count}: {e}")
+        # Reset the decoder so future packets have a chance
+        self._decoder = discord.opus.Decoder()
         return packet, b''
 
 _vr_opus.PacketDecoder._decode_packet = _safe_decode_packet
@@ -608,8 +619,16 @@ class TranscribeSink(voice_recv.AudioSink):
 
     def write(self, user, data: voice_recv.VoiceData):
         self._packet_count += 1
-        if self._packet_count <= 3:
-            print(f"[transcribe] write #{self._packet_count}: user={user}, pcm_len={len(data.pcm)}")
+        if self._packet_count <= 5:
+            pcm_len = len(data.pcm) if data.pcm else 0
+            # Show sample values to distinguish silence/noise/speech
+            if pcm_len >= 20:
+                samples = struct.unpack(f"<{min(10, pcm_len//2)}h", data.pcm[:min(20, pcm_len)])
+                print(f"[transcribe] write #{self._packet_count}: user={user}, pcm_len={pcm_len}, "
+                      f"samples={samples}, patch_ok={_patch_ok_count}, patch_err={_patch_err_count}")
+            else:
+                print(f"[transcribe] write #{self._packet_count}: user={user}, pcm_len={pcm_len}, "
+                      f"patch_ok={_patch_ok_count}, patch_err={_patch_err_count}")
 
         if user is None or not TRANSCRIBE or vosk_model is None:
             return
