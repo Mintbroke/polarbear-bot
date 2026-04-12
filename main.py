@@ -238,7 +238,7 @@ async def on_ready():
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
 
 @bot.tree.command(name="list", description="Command list for bot")
-async def list(interaction: discord.Interaction):
+async def list_commands(interaction: discord.Interaction):
     await interaction.response.send_message(commands_list, ephemeral=True)
 
 # coin flip: /coin
