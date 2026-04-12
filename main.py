@@ -489,7 +489,10 @@ async def get_or_create_transcripts_channel(guild: discord.Guild) -> discord.Tex
     for ch in guild.text_channels:
         if ch.name == "live-transcripts":
             return ch
-    return await guild.create_text_channel("live-transcripts")
+    try:
+        return await guild.create_text_channel("live-transcripts")
+    except discord.Forbidden:
+        return None
 
 
 def _downsample_48k_stereo_to_16k_mono(pcm_48k_stereo: bytes) -> bytes:
@@ -558,6 +561,13 @@ async def transcribe(interaction: discord.Interaction):
                 await vc.move_to(channel)
 
             transcribe_channel = await get_or_create_transcripts_channel(interaction.guild)
+            if transcribe_channel is None:
+                await interaction.response.send_message(
+                    "Could not find or create `#live-transcripts`. "
+                    "Please create the channel manually or give the bot Manage Channels permission.",
+                    ephemeral=True,
+                )
+                return
             user_recognizers = {}
 
             sink = _make_transcribe_sink(bot.loop)
