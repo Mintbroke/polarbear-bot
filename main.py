@@ -9,6 +9,7 @@ import random
 import asyncio
 import struct
 import time
+import wave
 from collections import defaultdict
 import threading
 #import psycopg2
@@ -58,6 +59,7 @@ TRANSCRIBE_LOCK = asyncio.Lock()
 transcribe_channel = None
 user_streams = {}  # uid -> moonshine Stream
 active_transcriber = None  # Moonshine Transcriber instance
+TRANSCRIBE_DEBUG = os.getenv("TRANSCRIBE_DEBUG", "").lower() in ("1", "true", "yes")
 
 GOAT_ID = int(os.getenv("GOAT_ID"))
 glaze_phrase = "so good so goat so smart so intelligent so rich so handsome so sexy so cute so courageous so adventurous so creative so amiable so charismatic so authentic so calm so cheerful so good looking so charming so compassionate so dynamic so adaptable so agreeable so amazing so keen so genius so clever so ambitious so bright so diligent so passionate so admirable so affable so affectionate so amicable so considerate so energetic so fabulous so generous so nice so buffed so cool so hot so insightful so thoughtful so brave so loyal so sincere so witty"
@@ -482,10 +484,32 @@ class _UserTranscriptListener(TranscriptEventListener):
         text = event.line.text.strip()
         if text and transcribe_channel is not None:
             print(f"[transcribe] {self._name}: {text}")
-            asyncio.run_coroutine_threadsafe(
-                transcribe_channel.send(f"**{self._name}**: {text}"),
-                self._bot_loop,
-            )
+            if TRANSCRIBE_DEBUG and event.line.audio_data:
+                asyncio.run_coroutine_threadsafe(
+                    self._send_with_wav(text, event.line.audio_data),
+                    self._bot_loop,
+                )
+            else:
+                asyncio.run_coroutine_threadsafe(
+                    transcribe_channel.send(f"**{self._name}**: {text}"),
+                    self._bot_loop,
+                )
+
+    async def _send_with_wav(self, text: str, audio_data: list[float]):
+        """Send transcription text along with the debug WAV of what Moonshine heard."""
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            pcm = struct.pack(f"<{len(audio_data)}h",
+                              *(max(-32768, min(32767, int(s * 32768))) for s in audio_data))
+            wf.writeframes(pcm)
+        buf.seek(0)
+        await transcribe_channel.send(
+            f"**{self._name}**: {text}",
+            file=discord.File(buf, filename=f"{self._name}_{int(time.time())}.wav"),
+        )
 
 
 class TranscribeSink(voice_recv.AudioSink):
