@@ -136,7 +136,7 @@ def _safe_do_run(self):
                 if data is not None:
                     self.sink.write(data.source, data)
 
-_vr_router.SinkDataRouter._do_run = _safe_do_run
+_vr_router.PacketRouter._do_run = _safe_do_run
 print("Patched voice_recv router: catch errors in pop_data")
 
 EMOJI_RE = re.compile(r'<a?:(?P<name>\w+):\d+>')
