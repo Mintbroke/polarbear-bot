@@ -9,6 +9,7 @@ import random
 import asyncio
 import json
 import struct
+import time
 from collections import defaultdict
 import threading
 #import psycopg2
@@ -511,64 +512,101 @@ class TranscribeSink(voice_recv.AudioSink):
     opus decode step (the one that crashes on corrupted packets) and hands us
     the raw opus frames directly.  We decode them ourselves and silently skip
     any bad packets.
+
+    Includes a flush mechanism: when a user stops speaking (no packets for
+    FLUSH_AFTER seconds), FinalResult() is called to emit any buffered text.
     """
+
+    FLUSH_AFTER = 1.5  # seconds of silence before flushing a user's recognizer
 
     def __init__(self, bot_loop: asyncio.AbstractEventLoop):
         super().__init__()
         self._bot_loop = bot_loop
         self._opus_decoders: dict[int, discord.opus.Decoder] = {}  # ssrc -> Decoder
-        self._write_count = 0
+        self._last_packet_time: dict[int, float] = {}  # uid -> monotonic time
+        self._user_names: dict[int, str] = {}  # uid -> display_name
+        self._lock = threading.Lock()
 
     def wants_opus(self) -> bool:
         return True  # receive raw opus — bypass library's decoder
 
-    def write(self, user, data: voice_recv.VoiceData):
-        self._write_count += 1
-        if self._write_count <= 5:
-            print(f"[transcribe] write() called #{self._write_count}: user={user}, "
-                  f"opus={len(data.opus) if data.opus else None}b")
+    def _post_text(self, name: str, text: str):
+        """Schedule sending a transcription message to the channel."""
+        print(f"[transcribe] {name}: {text}")
+        asyncio.run_coroutine_threadsafe(
+            transcribe_channel.send(f"**{name}**: {text}"),
+            self._bot_loop,
+        )
 
+    def flush_inactive(self):
+        """Flush recognizers for users who stopped speaking. Thread-safe."""
+        now = time.monotonic()
+        with self._lock:
+            for uid in list(self._last_packet_time):
+                if now - self._last_packet_time[uid] > self.FLUSH_AFTER:
+                    if uid in user_recognizers:
+                        result = json.loads(user_recognizers[uid].FinalResult())
+                        text = result.get("text", "").strip()
+                        if text and transcribe_channel is not None:
+                            name = self._user_names.get(uid, "Unknown")
+                            self._post_text(name, text)
+                    del self._last_packet_time[uid]
+
+    def write(self, user, data: voice_recv.VoiceData):
         if user is None or not TRANSCRIBE or vosk_model is None:
             return
 
-        try:
-            # Decode opus ourselves, skipping corrupted packets
-            ssrc = data.packet.ssrc
-            if ssrc not in self._opus_decoders:
-                self._opus_decoders[ssrc] = discord.opus.Decoder()
-                print(f"[transcribe] new decoder for ssrc={ssrc}, user={user.display_name}")
-
-            decoder = self._opus_decoders[ssrc]
+        with self._lock:
             try:
-                pcm = decoder.decode(data.opus)
-            except discord.opus.OpusError as e:
-                return  # skip corrupted packet silently
+                # Decode opus ourselves, skipping corrupted packets
+                ssrc = data.packet.ssrc
+                if ssrc not in self._opus_decoders:
+                    self._opus_decoders[ssrc] = discord.opus.Decoder()
 
-            if pcm is None:
-                return
+                try:
+                    pcm = self._opus_decoders[ssrc].decode(data.opus)
+                except discord.opus.OpusError:
+                    return  # skip corrupted packet silently
 
-            uid = user.id
-            if uid not in user_recognizers:
-                user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
+                if pcm is None:
+                    return
 
-            recognizer = user_recognizers[uid]
-            pcm_mono = _downsample_48k_stereo_to_16k_mono(pcm)
+                uid = user.id
+                self._last_packet_time[uid] = time.monotonic()
+                self._user_names[uid] = user.display_name
 
-            if recognizer.AcceptWaveform(pcm_mono):
-                result = json.loads(recognizer.Result())
-                text = result.get("text", "").strip()
-                if text and transcribe_channel is not None:
-                    display_name = user.display_name
-                    print(f"[transcribe] {display_name}: {text}")
-                    asyncio.run_coroutine_threadsafe(
-                        transcribe_channel.send(f"**{display_name}**: {text}"),
-                        self._bot_loop,
-                    )
-        except Exception as e:
-            print(f"[transcribe] sink error: {e}")
+                if uid not in user_recognizers:
+                    user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
+
+                pcm_mono = _downsample_48k_stereo_to_16k_mono(pcm)
+
+                if user_recognizers[uid].AcceptWaveform(pcm_mono):
+                    result = json.loads(user_recognizers[uid].Result())
+                    text = result.get("text", "").strip()
+                    if text and transcribe_channel is not None:
+                        self._post_text(user.display_name, text)
+            except Exception as e:
+                print(f"[transcribe] sink error: {e}")
 
     def cleanup(self):
+        with self._lock:
+            # Flush all remaining recognizers
+            for uid in list(self._last_packet_time):
+                if uid in user_recognizers:
+                    result = json.loads(user_recognizers[uid].FinalResult())
+                    text = result.get("text", "").strip()
+                    if text and transcribe_channel is not None:
+                        name = self._user_names.get(uid, "Unknown")
+                        self._post_text(name, text)
+            self._last_packet_time.clear()
         self._opus_decoders.clear()
+
+
+async def _transcribe_flush_loop(sink: TranscribeSink):
+    """Background task: periodically flush Vosk recognizers for users who stopped speaking."""
+    while TRANSCRIBE:
+        await asyncio.sleep(1.5)
+        await bot.loop.run_in_executor(None, sink.flush_inactive)
 
 
 @bot.tree.command(name="transcribe", description="Toggle live voice-to-text transcription in vc")
@@ -614,6 +652,7 @@ async def transcribe(interaction: discord.Interaction):
             vc.listen(sink)
 
             TRANSCRIBE = True
+            bot.loop.create_task(_transcribe_flush_loop(sink))
             await interaction.response.send_message(
                 f"Transcription started! Writing to {transcribe_channel.mention}"
             )
