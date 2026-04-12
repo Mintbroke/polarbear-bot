@@ -511,24 +511,52 @@ def _make_transcribe_sink(bot_loop: asyncio.AbstractEventLoop):
         if user is None or not TRANSCRIBE or vosk_model is None:
             return
 
-        uid = user.id
-        if uid not in user_recognizers:
-            user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
+        try:
+            uid = user.id
+            if uid not in user_recognizers:
+                user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
 
-        recognizer = user_recognizers[uid]
-        pcm_mono = _downsample_48k_stereo_to_16k_mono(data.pcm)
+            recognizer = user_recognizers[uid]
+            pcm_mono = _downsample_48k_stereo_to_16k_mono(data.pcm)
 
-        if recognizer.AcceptWaveform(pcm_mono):
-            result = json.loads(recognizer.Result())
-            text = result.get("text", "").strip()
-            if text and transcribe_channel is not None:
-                display_name = user.display_name
-                asyncio.run_coroutine_threadsafe(
-                    transcribe_channel.send(f"**{display_name}**: {text}"),
-                    bot_loop,
-                )
+            if recognizer.AcceptWaveform(pcm_mono):
+                result = json.loads(recognizer.Result())
+                text = result.get("text", "").strip()
+                if text and transcribe_channel is not None:
+                    display_name = user.display_name
+                    asyncio.run_coroutine_threadsafe(
+                        transcribe_channel.send(f"**{display_name}**: {text}"),
+                        bot_loop,
+                    )
+        except Exception as e:
+            print(f"[transcribe] sink error: {e}")
 
     return voice_recv.BasicSink(on_audio)
+
+
+def _restart_listening(error):
+    """Callback for vc.listen() — auto-restart if router dies while transcription is active."""
+    if error:
+        print(f"[transcribe] listen stopped with error: {error}")
+    if TRANSCRIBE:
+        print("[transcribe] restarting listener...")
+        asyncio.run_coroutine_threadsafe(_do_restart_listening(), bot.loop)
+
+
+async def _do_restart_listening():
+    """Re-attach the listen sink after the router thread dies."""
+    await asyncio.sleep(1)  # brief delay before reconnect
+    if not TRANSCRIBE:
+        return
+    for guild in bot.guilds:
+        vc = guild.voice_client
+        if vc and isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_connected():
+            if vc.is_listening():
+                vc.stop_listening()
+            sink = _make_transcribe_sink(bot.loop)
+            vc.listen(sink, after=_restart_listening)
+            print("[transcribe] listener restarted")
+            break
 
 
 @bot.tree.command(name="transcribe", description="Toggle live voice-to-text transcription in vc")
@@ -571,7 +599,7 @@ async def transcribe(interaction: discord.Interaction):
             user_recognizers = {}
 
             sink = _make_transcribe_sink(bot.loop)
-            vc.listen(sink)
+            vc.listen(sink, after=_restart_listening)
 
             TRANSCRIBE = True
             await interaction.response.send_message(
