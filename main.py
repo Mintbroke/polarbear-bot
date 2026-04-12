@@ -10,6 +10,7 @@ import asyncio
 import json
 import struct
 import time
+import wave
 from collections import defaultdict
 import threading
 #import psycopg2
@@ -526,6 +527,10 @@ class TranscribeSink(voice_recv.AudioSink):
         self._last_packet_time: dict[int, float] = {}  # uid -> monotonic time
         self._user_names: dict[int, str] = {}  # uid -> display_name
         self._lock = threading.Lock()
+        self._packet_count = 0
+        # Debug: accumulate raw PCM per user for wav upload
+        self._debug_pcm_48k: dict[int, bytearray] = {}  # uid -> stereo 48kHz pcm
+        self._debug_pcm_16k: dict[int, bytearray] = {}  # uid -> mono 16kHz pcm
 
     def wants_opus(self) -> bool:
         return True  # receive raw opus — bypass library's decoder
@@ -538,21 +543,65 @@ class TranscribeSink(voice_recv.AudioSink):
             self._bot_loop,
         )
 
+    def _save_and_upload_wav(self, uid: int, name: str):
+        """Save debug wav files and upload to transcripts channel."""
+        files = []
+        # 48kHz stereo raw
+        if uid in self._debug_pcm_48k and len(self._debug_pcm_48k[uid]) > 0:
+            path_48k = f"/tmp/debug_{uid}_48k_stereo.wav"
+            with wave.open(path_48k, "wb") as wf:
+                wf.setnchannels(2)
+                wf.setsampwidth(2)
+                wf.setframerate(48000)
+                wf.writeframes(bytes(self._debug_pcm_48k[uid]))
+            files.append(discord.File(path_48k, filename=f"{name}_48k_stereo.wav"))
+            print(f"[debug] saved {path_48k}: {len(self._debug_pcm_48k[uid])} bytes")
+
+        # 16kHz mono (what Vosk sees)
+        if uid in self._debug_pcm_16k and len(self._debug_pcm_16k[uid]) > 0:
+            path_16k = f"/tmp/debug_{uid}_16k_mono.wav"
+            with wave.open(path_16k, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(bytes(self._debug_pcm_16k[uid]))
+            files.append(discord.File(path_16k, filename=f"{name}_16k_mono.wav"))
+            print(f"[debug] saved {path_16k}: {len(self._debug_pcm_16k[uid])} bytes")
+
+        # Clear buffers
+        self._debug_pcm_48k.pop(uid, None)
+        self._debug_pcm_16k.pop(uid, None)
+
+        if files and transcribe_channel is not None:
+            asyncio.run_coroutine_threadsafe(
+                transcribe_channel.send(f"Debug audio for **{name}**:", files=files),
+                self._bot_loop,
+            )
+
     def flush_inactive(self):
         """Flush recognizers for users who stopped speaking. Thread-safe."""
         now = time.monotonic()
         with self._lock:
-            for uid in list(self._last_packet_time):
-                if now - self._last_packet_time[uid] > self.FLUSH_AFTER:
-                    if uid in user_recognizers:
-                        result = json.loads(user_recognizers[uid].FinalResult())
-                        text = result.get("text", "").strip()
-                        if text and transcribe_channel is not None:
-                            name = self._user_names.get(uid, "Unknown")
-                            self._post_text(name, text)
-                    del self._last_packet_time[uid]
+            stale = [uid for uid in self._last_packet_time
+                     if now - self._last_packet_time[uid] > self.FLUSH_AFTER]
+            if stale:
+                print(f"[transcribe] flushing {len(stale)} user(s)")
+            for uid in stale:
+                if uid in user_recognizers:
+                    result = json.loads(user_recognizers[uid].FinalResult())
+                    text = result.get("text", "").strip()
+                    if text and transcribe_channel is not None:
+                        name = self._user_names.get(uid, "Unknown")
+                        self._post_text(name, text)
+                # Upload debug wav
+                self._save_and_upload_wav(uid, self._user_names.get(uid, "Unknown"))
+                del self._last_packet_time[uid]
 
     def write(self, user, data: voice_recv.VoiceData):
+        self._packet_count += 1
+        if self._packet_count <= 3:
+            print(f"[transcribe] write #{self._packet_count}: user={user}, opus_len={len(data.opus) if data.opus else 0}")
+
         if user is None or not TRANSCRIBE or vosk_model is None:
             return
 
@@ -575,10 +624,17 @@ class TranscribeSink(voice_recv.AudioSink):
                 self._last_packet_time[uid] = time.monotonic()
                 self._user_names[uid] = user.display_name
 
+                # Debug: accumulate raw PCM
+                if uid not in self._debug_pcm_48k:
+                    self._debug_pcm_48k[uid] = bytearray()
+                    self._debug_pcm_16k[uid] = bytearray()
+                self._debug_pcm_48k[uid].extend(pcm)
+
                 if uid not in user_recognizers:
                     user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
 
                 pcm_mono = _downsample_48k_stereo_to_16k_mono(pcm)
+                self._debug_pcm_16k[uid].extend(pcm_mono)
 
                 if user_recognizers[uid].AcceptWaveform(pcm_mono):
                     result = json.loads(user_recognizers[uid].Result())
@@ -604,6 +660,7 @@ class TranscribeSink(voice_recv.AudioSink):
 
 async def _transcribe_flush_loop(sink: TranscribeSink):
     """Background task: periodically flush Vosk recognizers for users who stopped speaking."""
+    print("[transcribe] flush loop started")
     while TRANSCRIBE:
         await asyncio.sleep(1.5)
         await bot.loop.run_in_executor(None, sink.flush_inactive)
