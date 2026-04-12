@@ -4,3 +4,4 @@ builder = "dockerfile"
 [deploy]
 restartPolicyType = "always"
 startCommand = "python -u main.py"
+numReplicas = 1
