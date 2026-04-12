@@ -108,55 +108,6 @@ if not opus_lib:
 discord.opus.load_opus(opus_lib)
 print(discord.opus.is_loaded())
 
-# Monkey-patch voice_recv (commit 6b9fb95): drop non-audio packets before
-# they reach the opus decoder.  Payload type 120 == opus audio; anything else
-# (RTCP, screenshare, etc.) would corrupt the decoder state.
-import discord.ext.voice_recv.opus as _vr_opus
-_original_process_packet = _vr_opus.PacketDecoder._process_packet
-
-def _filtered_process_packet(self, packet):
-    if packet.payload != 120:
-        return None
-    return _original_process_packet(self, packet)
-
-_vr_opus.PacketDecoder._process_packet = _filtered_process_packet
-
-# Monkey-patch _decode_packet: if opus fails, reset the decoder so subsequent
-# packets can decode with a fresh state instead of failing forever.
-_original_decode_packet = _vr_opus.PacketDecoder._decode_packet
-
-def _safe_decode_packet(self, packet):
-    try:
-        return _original_decode_packet(self, packet)
-    except discord.opus.OpusError:
-        # Decoder state is corrupted — replace it with a fresh one
-        self._decoder = discord.opus.Decoder()
-        # Return empty PCM for this packet (sink will skip it)
-        return packet, b''
-
-_vr_opus.PacketDecoder._decode_packet = _safe_decode_packet
-
-# Monkey-patch router _do_run as safety net for any remaining exceptions
-import discord.ext.voice_recv.router as _vr_router
-
-def _safe_do_run(self):
-    while not self._end_thread.is_set():
-        self.waiter.wait()
-        with self._lock:
-            for decoder in self.waiter.items:
-                try:
-                    data = decoder.pop_data()
-                except Exception:
-                    # Reset decoder as last-resort recovery
-                    if decoder._decoder is not None:
-                        decoder._decoder = discord.opus.Decoder()
-                    continue
-                if data is not None:
-                    self.sink.write(data.source, data)
-
-_vr_router.PacketRouter._do_run = _safe_do_run
-print("Patched voice_recv: payload filter + opus recovery + router safety")
-
 EMOJI_RE = re.compile(r'<a?:(?P<name>\w+):\d+>')
 
 # daily mine limit
