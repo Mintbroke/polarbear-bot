@@ -120,9 +120,23 @@ def _filtered_process_packet(self, packet):
     return _original_process_packet(self, packet)
 
 _vr_opus.PacketDecoder._process_packet = _filtered_process_packet
-print("Patched voice_recv: drop non-opus packets (payload!=120)")
 
-# Monkey-patch router _do_run to catch corrupted-stream OpusError on pop_data
+# Monkey-patch _decode_packet: if opus fails, reset the decoder so subsequent
+# packets can decode with a fresh state instead of failing forever.
+_original_decode_packet = _vr_opus.PacketDecoder._decode_packet
+
+def _safe_decode_packet(self, packet):
+    try:
+        return _original_decode_packet(self, packet)
+    except discord.opus.OpusError:
+        # Decoder state is corrupted — replace it with a fresh one
+        self._decoder = discord.opus.Decoder()
+        # Return empty PCM for this packet (sink will skip it)
+        return packet, b''
+
+_vr_opus.PacketDecoder._decode_packet = _safe_decode_packet
+
+# Monkey-patch router _do_run as safety net for any remaining exceptions
 import discord.ext.voice_recv.router as _vr_router
 
 def _safe_do_run(self):
@@ -133,12 +147,15 @@ def _safe_do_run(self):
                 try:
                     data = decoder.pop_data()
                 except Exception:
+                    # Reset decoder as last-resort recovery
+                    if decoder._decoder is not None:
+                        decoder._decoder = discord.opus.Decoder()
                     continue
                 if data is not None:
                     self.sink.write(data.source, data)
 
 _vr_router.PacketRouter._do_run = _safe_do_run
-print("Patched voice_recv router: catch errors in pop_data")
+print("Patched voice_recv: payload filter + opus recovery + router safety")
 
 EMOJI_RE = re.compile(r'<a?:(?P<name>\w+):\d+>')
 
