@@ -7,7 +7,6 @@ import discord.ext.voice_recv as voice_recv
 import os
 import random
 import asyncio
-import json
 import struct
 import time
 from collections import defaultdict
@@ -27,48 +26,16 @@ from web import keep_alive
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import io
 
-import urllib.request
-import zipfile
-from pathlib import Path
-
-VOSK_MODEL_DIR = Path("vosk-model")
-VOSK_MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-
-def _ensure_vosk_model(model_dir: Path) -> Path:
-    """Download the Vosk model if the directory is empty or missing."""
-    # Check if directory has actual model files (not just empty subdirs)
-    if model_dir.exists() and any(model_dir.glob("*.cfg")) or (model_dir / "am" / "final.mdl").exists():
-        return model_dir
-
-    print(f"Vosk model not found in {model_dir}, downloading (~40 MB)...")
-    zip_path = model_dir.with_suffix(".zip")
-    urllib.request.urlretrieve(VOSK_MODEL_URL, zip_path)
-
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(model_dir.parent)
-
-    # The zip extracts to vosk-model-small-en-us-0.15/, move contents into vosk-model/
-    extracted_name = VOSK_MODEL_URL.split("/")[-1].replace(".zip", "")
-    extracted_path = model_dir.parent / extracted_name
-    if extracted_path.exists() and extracted_path != model_dir:
-        import shutil
-        if model_dir.exists():
-            shutil.rmtree(model_dir)
-        extracted_path.rename(model_dir)
-
-    zip_path.unlink(missing_ok=True)
-    print(f"Vosk model ready at: {model_dir}")
-    return model_dir
+from moonshine_voice import Transcriber, TranscriptEventListener, get_model_for_language, ModelArch
+from moonshine_voice.transcriber import LineCompleted
 
 try:
-    from vosk import KaldiRecognizer, Model, SetLogLevel
-    SetLogLevel(-1)
-    _ensure_vosk_model(VOSK_MODEL_DIR)
-    vosk_model = Model(str(VOSK_MODEL_DIR))
-    print("Vosk model loaded successfully")
+    model_path, model_arch = get_model_for_language("en")
+    moonshine_ready = True
+    print(f"Moonshine model ready at: {model_path} (arch={model_arch})")
 except Exception as e:
-    vosk_model = None
-    print(f"Vosk model not available: {e}")
+    moonshine_ready = False
+    print(f"Moonshine model not available: {e}")
 
 #from io import BytesIO
 
@@ -89,7 +56,8 @@ voice_speed = 1.5
 TRANSCRIBE = False
 TRANSCRIBE_LOCK = asyncio.Lock()
 transcribe_channel = None
-user_recognizers = {}
+user_streams = {}  # uid -> moonshine Stream
+active_transcriber = None  # Moonshine Transcriber instance
 
 GOAT_ID = int(os.getenv("GOAT_ID"))
 glaze_phrase = "so good so goat so smart so intelligent so rich so handsome so sexy so cute so courageous so adventurous so creative so amiable so charismatic so authentic so calm so cheerful so good looking so charming so compassionate so dynamic so adaptable so agreeable so amazing so keen so genius so clever so ambitious so bright so diligent so passionate so admirable so affable so affectionate so amicable so considerate so energetic so fabulous so generous so nice so buffed so cool so hot so insightful so thoughtful so brave so loyal so sincere so witty"
@@ -496,58 +464,44 @@ async def get_or_create_transcripts_channel(guild: discord.Guild) -> discord.Tex
         return None
 
 
-def _downsample_48k_stereo_to_16k_mono(pcm_48k_stereo: bytes) -> bytes:
-    """Convert 48 kHz stereo s16le PCM to 16 kHz mono s16le for Vosk."""
-    # 48kHz stereo = 2 samples per frame, take every 3rd frame (48/16=3), left channel only
-    samples = struct.unpack(f"<{len(pcm_48k_stereo)//2}h", pcm_48k_stereo)
-    # samples are interleaved L R L R ... take left channel every 3 frames
-    mono_16k = samples[0::6]  # every 6th sample = left channel, every 3rd frame
-    return struct.pack(f"<{len(mono_16k)}h", *mono_16k)
+def _pcm_stereo_s16le_to_float32_mono(pcm_bytes: bytes) -> list[float]:
+    """Convert 48 kHz stereo s16le PCM to mono float32 list for Moonshine."""
+    samples = struct.unpack(f"<{len(pcm_bytes)//2}h", pcm_bytes)
+    # Take left channel only from interleaved L R L R ...
+    return [s / 32768.0 for s in samples[0::2]]
+
+
+class _UserTranscriptListener(TranscriptEventListener):
+    """Per-stream listener that posts completed lines to the Discord channel."""
+
+    def __init__(self, display_name: str, bot_loop: asyncio.AbstractEventLoop):
+        self._name = display_name
+        self._bot_loop = bot_loop
+
+    def on_line_completed(self, event: LineCompleted):
+        text = event.line.text.strip()
+        if text and transcribe_channel is not None:
+            print(f"[transcribe] {self._name}: {text}")
+            asyncio.run_coroutine_threadsafe(
+                transcribe_channel.send(f"**{self._name}**: {text}"),
+                self._bot_loop,
+            )
 
 
 class TranscribeSink(voice_recv.AudioSink):
-    """Sink that receives decoded PCM from the library and feeds it to Vosk.
+    """Sink that receives decoded PCM and feeds it to Moonshine streams."""
 
-    A flush mechanism calls FinalResult() when a user stops speaking.
-    """
-
-    FLUSH_AFTER = 1.5  # seconds of silence before flushing a user's recognizer
-
-    def __init__(self, bot_loop: asyncio.AbstractEventLoop):
+    def __init__(self, transcriber: Transcriber, bot_loop: asyncio.AbstractEventLoop):
         super().__init__()
+        self._transcriber = transcriber
         self._bot_loop = bot_loop
-        self._last_packet_time: dict[int, float] = {}  # uid -> monotonic time
-        self._user_names: dict[int, str] = {}  # uid -> display_name
         self._lock = threading.Lock()
 
     def wants_opus(self) -> bool:
-        return False  # receive decoded PCM from the library's decoder
-
-    def _post_text(self, name: str, text: str):
-        """Schedule sending a transcription message to the channel."""
-        print(f"[transcribe] {name}: {text}")
-        asyncio.run_coroutine_threadsafe(
-            transcribe_channel.send(f"**{name}**: {text}"),
-            self._bot_loop,
-        )
-
-    def flush_inactive(self):
-        """Flush recognizers for users who stopped speaking. Thread-safe."""
-        now = time.monotonic()
-        with self._lock:
-            stale = [uid for uid in self._last_packet_time
-                     if now - self._last_packet_time[uid] > self.FLUSH_AFTER]
-            for uid in stale:
-                if uid in user_recognizers:
-                    result = json.loads(user_recognizers[uid].FinalResult())
-                    text = result.get("text", "").strip()
-                    if text and transcribe_channel is not None:
-                        name = self._user_names.get(uid, "Unknown")
-                        self._post_text(name, text)
-                del self._last_packet_time[uid]
+        return False
 
     def write(self, user, data: voice_recv.VoiceData):
-        if user is None or not TRANSCRIBE or vosk_model is None:
+        if user is None or not TRANSCRIBE or not moonshine_ready:
             return
         if not data.pcm:
             return
@@ -555,48 +509,35 @@ class TranscribeSink(voice_recv.AudioSink):
         with self._lock:
             try:
                 uid = user.id
-                self._last_packet_time[uid] = time.monotonic()
-                self._user_names[uid] = user.display_name
+                if uid not in user_streams:
+                    stream = self._transcriber.create_stream()
+                    listener = _UserTranscriptListener(user.display_name, self._bot_loop)
+                    stream.add_listener(listener)
+                    stream.start()
+                    user_streams[uid] = stream
 
-                if uid not in user_recognizers:
-                    user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
-
-                pcm_mono = _downsample_48k_stereo_to_16k_mono(data.pcm)
-
-                if user_recognizers[uid].AcceptWaveform(pcm_mono):
-                    result = json.loads(user_recognizers[uid].Result())
-                    text = result.get("text", "").strip()
-                    if text and transcribe_channel is not None:
-                        self._post_text(user.display_name, text)
+                audio_f32 = _pcm_stereo_s16le_to_float32_mono(data.pcm)
+                user_streams[uid].add_audio(audio_f32, 48000)
             except Exception as e:
                 print(f"[transcribe] sink error: {e}")
 
     def cleanup(self):
         with self._lock:
-            for uid in list(self._last_packet_time):
-                if uid in user_recognizers:
-                    result = json.loads(user_recognizers[uid].FinalResult())
-                    text = result.get("text", "").strip()
-                    if text and transcribe_channel is not None:
-                        name = self._user_names.get(uid, "Unknown")
-                        self._post_text(name, text)
-            self._last_packet_time.clear()
-
-
-async def _transcribe_flush_loop(sink: TranscribeSink):
-    """Background task: periodically flush Vosk recognizers for users who stopped speaking."""
-    print("[transcribe] flush loop started")
-    while TRANSCRIBE:
-        await asyncio.sleep(1.5)
-        await bot.loop.run_in_executor(None, sink.flush_inactive)
+            for uid, stream in user_streams.items():
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:
+                    pass
+            user_streams.clear()
 
 
 @bot.tree.command(name="transcribe", description="Toggle live voice-to-text transcription in vc")
 async def transcribe(interaction: discord.Interaction):
-    global TRANSCRIBE, transcribe_channel, user_recognizers
+    global TRANSCRIBE, transcribe_channel, user_streams, active_transcriber
 
-    if vosk_model is None:
-        await interaction.response.send_message("Vosk model is not loaded — transcription unavailable.", ephemeral=True)
+    if not moonshine_ready:
+        await interaction.response.send_message("Moonshine model is not loaded — transcription unavailable.", ephemeral=True)
         return
 
     member = interaction.user
@@ -628,13 +569,13 @@ async def transcribe(interaction: discord.Interaction):
                     ephemeral=True,
                 )
                 return
-            user_recognizers = {}
+            user_streams = {}
 
-            sink = TranscribeSink(bot.loop)
+            active_transcriber = Transcriber(model_path=model_path, model_arch=model_arch)
+            sink = TranscribeSink(active_transcriber, bot.loop)
             vc.listen(sink)
 
             TRANSCRIBE = True
-            bot.loop.create_task(_transcribe_flush_loop(sink))
             await interaction.response.send_message(
                 f"Transcription started! Writing to {transcribe_channel.mention}"
             )
@@ -645,7 +586,19 @@ async def transcribe(interaction: discord.Interaction):
             if vc and isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening():
                 vc.stop_listening()
 
-            user_recognizers = {}
+            for uid, stream in user_streams.items():
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception:
+                    pass
+            user_streams = {}
+            if active_transcriber is not None:
+                try:
+                    active_transcriber.close()
+                except Exception:
+                    pass
+                active_transcriber = None
 
             if vc and vc.is_connected() and not VOICE:
                 await vc.disconnect()

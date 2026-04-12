@@ -19,7 +19,7 @@ pydub==0.25.1
 
 # Voice receive + Speech-to-text (using vocolboy's fork with DAVE fix, PR #56)
 discord-ext-voice-recv @ https://github.com/vocolboy/discord-ext-voice-recv/archive/refs/heads/main.zip
-vosk
+moonshine-voice
 
 # Database support
 #psycopg2-binary==2.9.6
