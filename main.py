@@ -121,6 +121,24 @@ def _filtered_process_packet(self, packet):
 _vr_opus.PacketDecoder._process_packet = _filtered_process_packet
 print("Patched voice_recv: drop non-opus packets (payload!=120)")
 
+# Monkey-patch router _do_run to catch corrupted-stream OpusError on pop_data
+import discord.ext.voice_recv.router as _vr_router
+
+def _safe_do_run(self):
+    while not self._end_thread.is_set():
+        self.waiter.wait()
+        with self._lock:
+            for decoder in self.waiter.items:
+                try:
+                    data = decoder.pop_data()
+                except Exception:
+                    continue
+                if data is not None:
+                    self.sink.write(data.source, data)
+
+_vr_router.SinkDataRouter._do_run = _safe_do_run
+print("Patched voice_recv router: catch errors in pop_data")
+
 EMOJI_RE = re.compile(r'<a?:(?P<name>\w+):\d+>')
 
 # daily mine limit
