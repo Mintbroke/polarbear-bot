@@ -595,7 +595,14 @@ async def transcribe(interaction: discord.Interaction):
                 return
             user_streams = {}
 
-            active_transcriber = Transcriber(model_path=model_path, model_arch=model_arch)
+            active_transcriber = Transcriber(
+                model_path=model_path,
+                model_arch=model_arch,
+                options={
+                    "vad_threshold": "0.3",
+                    "vad_max_segment_duration": "20",
+                },
+            )
             sink = TranscribeSink(active_transcriber, bot.loop)
             vc.listen(sink)
 
