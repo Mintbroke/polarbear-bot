@@ -561,7 +561,7 @@ async def transcribe(interaction: discord.Interaction):
     global TRANSCRIBE, transcribe_channel, user_streams, active_transcriber
 
     if not moonshine_ready:
-        await interaction.response.send_message("Moonshine model is not loaded — transcription unavailable.", ephemeral=True)
+        await interaction.response.send_message("Moonshine model is not available — transcription unavailable.", ephemeral=True)
         return
 
     member = interaction.user
@@ -617,7 +617,7 @@ async def transcribe(interaction: discord.Interaction):
             if vc and isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening():
                 vc.stop_listening()
 
-            for uid, stream in user_streams.items():
+            for uid, stream in list(user_streams.items()):
                 try:
                     stream.stop()
                     stream.close()
