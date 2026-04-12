@@ -10,6 +10,8 @@ import asyncio
 import struct
 import time
 import wave
+import numpy as np
+import queue
 from collections import defaultdict
 import threading
 #import psycopg2
@@ -466,11 +468,11 @@ async def get_or_create_transcripts_channel(guild: discord.Guild) -> discord.Tex
         return None
 
 
-def _pcm_stereo_s16le_to_float32_mono(pcm_bytes: bytes) -> list[float]:
-    """Convert 48 kHz stereo s16le PCM to mono float32 list for Moonshine."""
-    samples = struct.unpack(f"<{len(pcm_bytes)//2}h", pcm_bytes)
+def _pcm_stereo_s16le_to_float32_mono(pcm_bytes: bytes) -> np.ndarray:
+    """Convert 48 kHz stereo s16le PCM to mono float32 ndarray for Moonshine."""
+    samples = np.frombuffer(pcm_bytes, dtype=np.int16)
     # Take left channel only from interleaved L R L R ...
-    return [s / 32768.0 for s in samples[0::2]]
+    return samples[0::2].astype(np.float32) / 32768.0
 
 
 class _UserTranscriptListener(TranscriptEventListener):
@@ -520,6 +522,31 @@ class TranscribeSink(voice_recv.AudioSink):
         self._transcriber = transcriber
         self._bot_loop = bot_loop
         self._lock = threading.Lock()
+        self._queue = queue.SimpleQueue()   # (uid, display_name, pcm_bytes)
+        self._worker = threading.Thread(target=self._process_loop, daemon=True)
+        self._running = True
+        self._worker.start()
+
+    def _process_loop(self):
+        while self._running:
+            try:
+                item = self._queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            uid, display_name, pcm_bytes = item
+            try:
+                with self._lock:
+                    if uid not in user_streams:
+                        stream = self._transcriber.create_stream()
+                        listener = _UserTranscriptListener(display_name, self._bot_loop)
+                        stream.add_listener(listener)
+                        stream.start()
+                        user_streams[uid] = stream
+
+                audio_f32 = _pcm_stereo_s16le_to_float32_mono(pcm_bytes)
+                user_streams[uid].add_audio(audio_f32, 48000)
+            except Exception as e:
+                print(f"[transcribe] worker error: {e}")
 
     def wants_opus(self) -> bool:
         return False
@@ -529,23 +556,11 @@ class TranscribeSink(voice_recv.AudioSink):
             return
         if not data.pcm:
             return
-
-        with self._lock:
-            try:
-                uid = user.id
-                if uid not in user_streams:
-                    stream = self._transcriber.create_stream()
-                    listener = _UserTranscriptListener(user.display_name, self._bot_loop)
-                    stream.add_listener(listener)
-                    stream.start()
-                    user_streams[uid] = stream
-
-                audio_f32 = _pcm_stereo_s16le_to_float32_mono(data.pcm)
-                user_streams[uid].add_audio(audio_f32, 48000)
-            except Exception as e:
-                print(f"[transcribe] sink error: {e}")
+        self._queue.put((user.id, user.display_name, data.pcm))
 
     def cleanup(self):
+        self._running = False
+        self._worker.join(timeout=2)
         with self._lock:
             for uid, stream in user_streams.items():
                 try:
