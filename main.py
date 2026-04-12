@@ -517,11 +517,17 @@ class TranscribeSink(voice_recv.AudioSink):
         super().__init__()
         self._bot_loop = bot_loop
         self._opus_decoders: dict[int, discord.opus.Decoder] = {}  # ssrc -> Decoder
+        self._write_count = 0
 
     def wants_opus(self) -> bool:
         return True  # receive raw opus — bypass library's decoder
 
     def write(self, user, data: voice_recv.VoiceData):
+        self._write_count += 1
+        if self._write_count <= 5:
+            print(f"[transcribe] write() called #{self._write_count}: user={user}, "
+                  f"opus={len(data.opus) if data.opus else None}b")
+
         if user is None or not TRANSCRIBE or vosk_model is None:
             return
 
@@ -530,11 +536,12 @@ class TranscribeSink(voice_recv.AudioSink):
             ssrc = data.packet.ssrc
             if ssrc not in self._opus_decoders:
                 self._opus_decoders[ssrc] = discord.opus.Decoder()
+                print(f"[transcribe] new decoder for ssrc={ssrc}, user={user.display_name}")
 
             decoder = self._opus_decoders[ssrc]
             try:
                 pcm = decoder.decode(data.opus)
-            except discord.opus.OpusError:
+            except discord.opus.OpusError as e:
                 return  # skip corrupted packet silently
 
             if pcm is None:
@@ -552,6 +559,7 @@ class TranscribeSink(voice_recv.AudioSink):
                 text = result.get("text", "").strip()
                 if text and transcribe_channel is not None:
                     display_name = user.display_name
+                    print(f"[transcribe] {display_name}: {text}")
                     asyncio.run_coroutine_threadsafe(
                         transcribe_channel.send(f"**{display_name}**: {text}"),
                         self._bot_loop,
