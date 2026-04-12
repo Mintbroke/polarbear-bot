@@ -504,20 +504,48 @@ def _downsample_48k_stereo_to_16k_mono(pcm_48k_stereo: bytes) -> bytes:
     return struct.pack(f"<{len(mono_16k)}h", *mono_16k)
 
 
-def _make_transcribe_sink(bot_loop: asyncio.AbstractEventLoop):
-    """Create a BasicSink callback that feeds audio to Vosk and posts transcripts."""
+class TranscribeSink(voice_recv.AudioSink):
+    """Custom sink that receives raw opus and decodes with error handling.
 
-    def on_audio(user, data: voice_recv.VoiceData):
+    By reporting wants_opus()=True, the library's PacketRouter skips its own
+    opus decode step (the one that crashes on corrupted packets) and hands us
+    the raw opus frames directly.  We decode them ourselves and silently skip
+    any bad packets.
+    """
+
+    def __init__(self, bot_loop: asyncio.AbstractEventLoop):
+        super().__init__()
+        self._bot_loop = bot_loop
+        self._opus_decoders: dict[int, discord.opus.Decoder] = {}  # ssrc -> Decoder
+
+    def wants_opus(self) -> bool:
+        return True  # receive raw opus — bypass library's decoder
+
+    def write(self, user, data: voice_recv.VoiceData):
         if user is None or not TRANSCRIBE or vosk_model is None:
             return
 
         try:
+            # Decode opus ourselves, skipping corrupted packets
+            ssrc = data.packet.ssrc
+            if ssrc not in self._opus_decoders:
+                self._opus_decoders[ssrc] = discord.opus.Decoder()
+
+            decoder = self._opus_decoders[ssrc]
+            try:
+                pcm = decoder.decode(data.opus)
+            except discord.opus.OpusError:
+                return  # skip corrupted packet silently
+
+            if pcm is None:
+                return
+
             uid = user.id
             if uid not in user_recognizers:
                 user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
 
             recognizer = user_recognizers[uid]
-            pcm_mono = _downsample_48k_stereo_to_16k_mono(data.pcm)
+            pcm_mono = _downsample_48k_stereo_to_16k_mono(pcm)
 
             if recognizer.AcceptWaveform(pcm_mono):
                 result = json.loads(recognizer.Result())
@@ -526,37 +554,13 @@ def _make_transcribe_sink(bot_loop: asyncio.AbstractEventLoop):
                     display_name = user.display_name
                     asyncio.run_coroutine_threadsafe(
                         transcribe_channel.send(f"**{display_name}**: {text}"),
-                        bot_loop,
+                        self._bot_loop,
                     )
         except Exception as e:
             print(f"[transcribe] sink error: {e}")
 
-    return voice_recv.BasicSink(on_audio)
-
-
-def _restart_listening(error):
-    """Callback for vc.listen() — auto-restart if router dies while transcription is active."""
-    if error:
-        print(f"[transcribe] listen stopped with error: {error}")
-    if TRANSCRIBE:
-        print("[transcribe] restarting listener...")
-        asyncio.run_coroutine_threadsafe(_do_restart_listening(), bot.loop)
-
-
-async def _do_restart_listening():
-    """Re-attach the listen sink after the router thread dies."""
-    await asyncio.sleep(1)  # brief delay before reconnect
-    if not TRANSCRIBE:
-        return
-    for guild in bot.guilds:
-        vc = guild.voice_client
-        if vc and isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_connected():
-            if vc.is_listening():
-                vc.stop_listening()
-            sink = _make_transcribe_sink(bot.loop)
-            vc.listen(sink, after=_restart_listening)
-            print("[transcribe] listener restarted")
-            break
+    def cleanup(self):
+        self._opus_decoders.clear()
 
 
 @bot.tree.command(name="transcribe", description="Toggle live voice-to-text transcription in vc")
@@ -598,8 +602,8 @@ async def transcribe(interaction: discord.Interaction):
                 return
             user_recognizers = {}
 
-            sink = _make_transcribe_sink(bot.loop)
-            vc.listen(sink, after=_restart_listening)
+            sink = TranscribeSink(bot.loop)
+            vc.listen(sink)
 
             TRANSCRIBE = True
             await interaction.response.send_message(
