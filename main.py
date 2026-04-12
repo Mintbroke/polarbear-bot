@@ -3,9 +3,12 @@ import discord.opus
 import ctypes.util
 from discord import app_commands
 from discord.ext import commands
+import discord.ext.voice_recv as voice_recv
 import os
 import random
 import asyncio
+import json
+import struct
 from collections import defaultdict
 import threading
 #import psycopg2
@@ -23,6 +26,15 @@ from web import keep_alive
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import io
 
+try:
+    from vosk import KaldiRecognizer, Model, SetLogLevel
+    SetLogLevel(-1)
+    vosk_model = Model("vosk-model")
+    print("Vosk model loaded successfully")
+except Exception as e:
+    vosk_model = None
+    print(f"Vosk model not available: {e}")
+
 #from io import BytesIO
 
 #from polarbear_enhanced import EnhancedPolarBearBot
@@ -37,6 +49,12 @@ VOICE_SPEED_LOCK = asyncio.Lock()
 AUTHOR_LOCK = asyncio.Lock()
 previous_author = None
 voice_speed = 1.5
+
+# transcribe variables:
+TRANSCRIBE = False
+TRANSCRIBE_LOCK = asyncio.Lock()
+transcribe_channel = None
+user_recognizers = {}
 
 GOAT_ID = int(os.getenv("GOAT_ID"))
 glaze_phrase = "so good so goat so smart so intelligent so rich so handsome so sexy so cute so courageous so adventurous so creative so amiable so charismatic so authentic so calm so cheerful so good looking so charming so compassionate so dynamic so adaptable so agreeable so amazing so keen so genius so clever so ambitious so bright so diligent so passionate so admirable so affable so affectionate so amicable so considerate so energetic so fabulous so generous so nice so buffed so cool so hot so insightful so thoughtful so brave so loyal so sincere so witty"
@@ -67,6 +85,7 @@ commands_list += "/pick [choice1, choice2, choice3, ...] : Pick a random choice\
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 commands_list += "/voice : Switch on/off for message to speech function in vc\n"
 commands_list += "/voice_speed : /voice_speed [speed]\n"
+commands_list += "/transcribe : Toggle live voice-to-text transcription in vc\n"
 
 '''
 commands_list += "\nSSAL COMMANDS: \n"
@@ -339,9 +358,9 @@ async def voice(interaction: discord.Interaction):
             if(member.voice):
                 VOICE = True
                 channel = member.voice.channel
-                vc: discord.VoiceClient = interaction.guild.voice_client
+                vc = interaction.guild.voice_client
                 if vc is None:
-                    vc = await channel.connect()
+                    vc = await channel.connect(cls=voice_recv.VoiceRecvClient)
                 elif vc.channel != channel:
                     await vc.move_to(channel)
                 await interaction.response.send_message(f"Polarbear bot will now speak on message if sender is in vc!")
@@ -349,8 +368,8 @@ async def voice(interaction: discord.Interaction):
                 await interaction.response.send_message(f"You need to be in vc first!")
         else:
             VOICE = False
-            vc: discord.VoiceClient = interaction.guild.voice_client
-            if vc and vc.is_connected():
+            vc = interaction.guild.voice_client
+            if vc and vc.is_connected() and not TRANSCRIBE:
                 await vc.disconnect()
             await interaction.response.send_message("Polarbear bot will no longer play voice on message now!")
 
@@ -428,6 +447,105 @@ async def change_voice_speed(interaction: discord.Interaction, speed: float):
         global voice_speed
         voice_speed = speed
         await interaction.response.send_message(f"Polarbear bot voice speed is now: {speed}")
+
+
+# ---- Transcription helpers ----
+
+async def get_or_create_transcripts_channel(guild: discord.Guild) -> discord.TextChannel:
+    for ch in guild.text_channels:
+        if ch.name == "live-transcripts":
+            return ch
+    return await guild.create_text_channel("live-transcripts")
+
+
+def _downsample_48k_stereo_to_16k_mono(pcm_48k_stereo: bytes) -> bytes:
+    """Convert 48 kHz stereo s16le PCM to 16 kHz mono s16le for Vosk."""
+    # 48kHz stereo = 2 samples per frame, take every 3rd frame (48/16=3), left channel only
+    samples = struct.unpack(f"<{len(pcm_48k_stereo)//2}h", pcm_48k_stereo)
+    # samples are interleaved L R L R ... take left channel every 3 frames
+    mono_16k = samples[0::6]  # every 6th sample = left channel, every 3rd frame
+    return struct.pack(f"<{len(mono_16k)}h", *mono_16k)
+
+
+def _make_transcribe_sink(bot_loop: asyncio.AbstractEventLoop):
+    """Create a BasicSink callback that feeds audio to Vosk and posts transcripts."""
+
+    def on_audio(user, data: voice_recv.VoiceData):
+        if user is None or not TRANSCRIBE or vosk_model is None:
+            return
+
+        uid = user.id
+        if uid not in user_recognizers:
+            user_recognizers[uid] = KaldiRecognizer(vosk_model, 16000)
+
+        recognizer = user_recognizers[uid]
+        pcm_mono = _downsample_48k_stereo_to_16k_mono(data.pcm)
+
+        if recognizer.AcceptWaveform(pcm_mono):
+            result = json.loads(recognizer.Result())
+            text = result.get("text", "").strip()
+            if text and transcribe_channel is not None:
+                display_name = user.display_name
+                asyncio.run_coroutine_threadsafe(
+                    transcribe_channel.send(f"**{display_name}**: {text}"),
+                    bot_loop,
+                )
+
+    return voice_recv.BasicSink(on_audio)
+
+
+@bot.tree.command(name="transcribe", description="Toggle live voice-to-text transcription in vc")
+async def transcribe(interaction: discord.Interaction):
+    global TRANSCRIBE, transcribe_channel, user_recognizers
+
+    if vosk_model is None:
+        await interaction.response.send_message("Vosk model is not loaded — transcription unavailable.", ephemeral=True)
+        return
+
+    member = interaction.user
+    async with TRANSCRIBE_LOCK:
+        if not TRANSCRIBE:
+            # --- Turn ON ---
+            if not member.voice:
+                await interaction.response.send_message("You need to be in a voice channel first!", ephemeral=True)
+                return
+
+            channel = member.voice.channel
+            vc = interaction.guild.voice_client
+
+            # Connect or upgrade to VoiceRecvClient
+            if vc is None:
+                vc = await channel.connect(cls=voice_recv.VoiceRecvClient)
+            elif not isinstance(vc, voice_recv.VoiceRecvClient):
+                # Reconnect with recv-capable client
+                await vc.disconnect()
+                vc = await channel.connect(cls=voice_recv.VoiceRecvClient)
+            elif vc.channel != channel:
+                await vc.move_to(channel)
+
+            transcribe_channel = await get_or_create_transcripts_channel(interaction.guild)
+            user_recognizers = {}
+
+            sink = _make_transcribe_sink(bot.loop)
+            vc.listen(sink)
+
+            TRANSCRIBE = True
+            await interaction.response.send_message(
+                f"Transcription started! Writing to {transcribe_channel.mention}"
+            )
+        else:
+            # --- Turn OFF ---
+            TRANSCRIBE = False
+            vc = interaction.guild.voice_client
+            if vc and isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening():
+                vc.stop_listening()
+
+            user_recognizers = {}
+
+            if vc and vc.is_connected() and not VOICE:
+                await vc.disconnect()
+
+            await interaction.response.send_message("Transcription stopped!")
 
 
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#

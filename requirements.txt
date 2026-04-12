@@ -17,6 +17,10 @@ davey
 gTTS==2.5.4
 pydub==0.25.1
 
+# Voice receive + Speech-to-text
+discord-ext-voice-recv
+vosk
+
 # Database support
 #psycopg2-binary==2.9.6
 
