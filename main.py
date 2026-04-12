@@ -603,7 +603,7 @@ async def transcribe(interaction: discord.Interaction):
                     model_path=model_path,
                     model_arch=model_arch,
                     options={
-                        "vad_threshold": "0.4",
+                        "vad_threshold": "0.3",
                         "vad_max_segment_duration": "20",
                     },
                 ),
