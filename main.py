@@ -59,8 +59,8 @@ voice_speed = 1.5
 TRANSCRIBE = False
 TRANSCRIBE_LOCK = asyncio.Lock()
 transcribe_channel = None
-user_streams = {}  # uid -> moonshine Stream
 active_transcriber = None  # Moonshine Transcriber instance
+active_transcribe_sink = None  # Discord receive sink that owns Moonshine streams
 TRANSCRIBE_DEBUG = os.getenv("TRANSCRIBE_DEBUG", "").lower() in ("1", "true", "yes")
 
 GOAT_ID = int(os.getenv("GOAT_ID"))
@@ -468,6 +468,22 @@ async def get_or_create_transcripts_channel(guild: discord.Guild) -> discord.Tex
         return None
 
 
+async def _shutdown_active_transcribe_sink():
+    global active_transcribe_sink
+    sink = active_transcribe_sink
+    active_transcribe_sink = None
+    if sink is not None:
+        await bot.loop.run_in_executor(None, sink.cleanup)
+
+
+async def _close_active_transcriber():
+    global active_transcriber
+    transcriber = active_transcriber
+    active_transcriber = None
+    if transcriber is not None:
+        await bot.loop.run_in_executor(None, transcriber.close)
+
+
 def _pcm_stereo_s16le_to_float32_mono(pcm_bytes: bytes) -> np.ndarray:
     """Convert 48 kHz stereo s16le PCM to mono float32 ndarray for Moonshine."""
     samples = np.frombuffer(pcm_bytes, dtype=np.int16)
@@ -517,63 +533,85 @@ class _UserTranscriptListener(TranscriptEventListener):
 class TranscribeSink(voice_recv.AudioSink):
     """Sink that receives decoded PCM and feeds it to Moonshine streams."""
 
+    _STOP = object()
+
     def __init__(self, transcriber: Transcriber, bot_loop: asyncio.AbstractEventLoop):
         super().__init__()
         self._transcriber = transcriber
         self._bot_loop = bot_loop
         self._lock = threading.Lock()
-        self._queue = queue.SimpleQueue()   # (uid, display_name, pcm_bytes)
+        self._queue = queue.Queue()  # (uid, display_name, pcm_bytes)
+        self._streams = {}  # uid -> moonshine Stream
+        self._closing = threading.Event()
+        self._streams_closed = False
         self._worker = threading.Thread(target=self._process_loop, daemon=True)
-        self._running = True
         self._worker.start()
 
     def _process_loop(self):
-        while self._running:
-            try:
-                item = self._queue.get(timeout=0.1)
-            except queue.Empty:
+        while True:
+            item = self._queue.get()
+            if item is self._STOP:
+                break
+            if self._closing.is_set():
                 continue
             uid, display_name, pcm_bytes = item
             try:
+                audio_f32 = _pcm_stereo_s16le_to_float32_mono(pcm_bytes)
                 with self._lock:
-                    if uid not in user_streams:
+                    if self._closing.is_set():
+                        continue
+                    if uid not in self._streams:
                         stream = self._transcriber.create_stream()
                         listener = _UserTranscriptListener(display_name, self._bot_loop)
                         stream.add_listener(listener)
                         stream.start()
-                        user_streams[uid] = stream
-
-                audio_f32 = _pcm_stereo_s16le_to_float32_mono(pcm_bytes)
-                user_streams[uid].add_audio(audio_f32, 48000)
+                        self._streams[uid] = stream
+                    self._streams[uid].add_audio(audio_f32, 48000)
             except Exception as e:
-                print(f"[transcribe] worker error: {e}")
+                print(f"[transcribe] worker error for {display_name} ({uid}): {type(e).__name__}: {e}")
+        self._close_streams()
+
+    def _close_streams(self):
+        with self._lock:
+            if self._streams_closed:
+                return
+            self._streams_closed = True
+            streams = list(self._streams.values())
+            self._streams.clear()
+
+        for stream in streams:
+            try:
+                stream.stop()
+            except Exception:
+                pass
+            try:
+                stream.close()
+            except Exception:
+                pass
 
     def wants_opus(self) -> bool:
         return False
 
     def write(self, user, data: voice_recv.VoiceData):
-        if user is None or not TRANSCRIBE or not moonshine_ready:
+        if self._closing.is_set() or user is None or not TRANSCRIBE or not moonshine_ready:
             return
         if not data.pcm:
             return
         self._queue.put((user.id, user.display_name, data.pcm))
 
     def cleanup(self):
-        self._running = False
-        self._worker.join(timeout=2)
-        with self._lock:
-            for uid, stream in user_streams.items():
-                try:
-                    stream.stop()
-                    stream.close()
-                except Exception:
-                    pass
-            user_streams.clear()
+        if self._closing.is_set():
+            return
+        self._closing.set()
+        self._queue.put(self._STOP)
+        if threading.current_thread() is not self._worker:
+            self._worker.join()
+        self._close_streams()
 
 
 @bot.tree.command(name="transcribe", description="Toggle live voice-to-text transcription in vc")
 async def transcribe(interaction: discord.Interaction):
-    global TRANSCRIBE, transcribe_channel, user_streams, active_transcriber
+    global TRANSCRIBE, transcribe_channel, active_transcriber, active_transcribe_sink
 
     if not moonshine_ready:
         await interaction.response.send_message("Moonshine model is not available — transcription unavailable.", ephemeral=True)
@@ -608,25 +646,41 @@ async def transcribe(interaction: discord.Interaction):
                     ephemeral=True,
                 )
                 return
-            user_streams = {}
 
             await interaction.response.defer()
 
-            active_transcriber = await bot.loop.run_in_executor(
-                None,
-                lambda: Transcriber(
-                    model_path=model_path,
-                    model_arch=model_arch,
-                    options={
-                        "vad_threshold": "0.3",
-                        "vad_max_segment_duration": "20",
-                    },
-                ),
-            )
-            sink = TranscribeSink(active_transcriber, bot.loop)
-            vc.listen(sink)
+            try:
+                if vc.is_listening():
+                    vc.stop_listening()
+                await _shutdown_active_transcribe_sink()
+                await _close_active_transcriber()
 
-            TRANSCRIBE = True
+                active_transcriber = await bot.loop.run_in_executor(
+                    None,
+                    lambda: Transcriber(
+                        model_path=model_path,
+                        model_arch=model_arch,
+                        options={
+                            "vad_threshold": "0.3",
+                            "vad_max_segment_duration": "20",
+                        },
+                    ),
+                )
+                active_transcribe_sink = TranscribeSink(active_transcriber, bot.loop)
+                TRANSCRIBE = True
+                vc.listen(active_transcribe_sink)
+            except Exception as e:
+                TRANSCRIBE = False
+                if vc.is_listening():
+                    vc.stop_listening()
+                await _shutdown_active_transcribe_sink()
+                await _close_active_transcriber()
+                await interaction.followup.send(
+                    f"Failed to start transcription: {type(e).__name__}: {e}",
+                    ephemeral=True,
+                )
+                return
+
             await interaction.followup.send(
                 f"Transcription started! Writing to {transcribe_channel.mention}"
             )
@@ -637,19 +691,9 @@ async def transcribe(interaction: discord.Interaction):
             if vc and isinstance(vc, voice_recv.VoiceRecvClient) and vc.is_listening():
                 vc.stop_listening()
 
-            for uid, stream in list(user_streams.items()):
-                try:
-                    stream.stop()
-                    stream.close()
-                except Exception:
-                    pass
-            user_streams = {}
-            if active_transcriber is not None:
-                try:
-                    active_transcriber.close()
-                except Exception:
-                    pass
-                active_transcriber = None
+            await _shutdown_active_transcribe_sink()
+            await _close_active_transcriber()
+            transcribe_channel = None
 
             if vc and vc.is_connected() and not VOICE:
                 await vc.disconnect()
