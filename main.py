@@ -32,13 +32,10 @@ import io
 from moonshine_voice import Transcriber, TranscriptEventListener, get_model_for_language, ModelArch
 from moonshine_voice.transcriber import LineCompleted
 
-try:
-    model_path, model_arch = get_model_for_language("en")
-    moonshine_ready = True
-    print(f"Moonshine model ready at: {model_path} (arch={model_arch})")
-except Exception as e:
-    moonshine_ready = False
-    print(f"Moonshine model not available: {e}")
+# Moonshine model is loaded on-demand when /transcribe is used
+model_path = None
+model_arch = None
+moonshine_ready = False
 
 #from io import BytesIO
 
@@ -484,6 +481,31 @@ async def _close_active_transcriber():
         await bot.loop.run_in_executor(None, transcriber.close)
 
 
+def _load_moonshine_model():
+    """Load the Moonshine model into memory. Called when transcription starts."""
+    global model_path, model_arch, moonshine_ready
+    if moonshine_ready:
+        return True
+    try:
+        model_path, model_arch = get_model_for_language("en")
+        moonshine_ready = True
+        print(f"Moonshine model loaded: {model_path} (arch={model_arch})")
+        return True
+    except Exception as e:
+        moonshine_ready = False
+        print(f"Moonshine model failed to load: {e}")
+        return False
+
+
+def _unload_moonshine_model():
+    """Unload the Moonshine model from memory. Called when transcription stops."""
+    global model_path, model_arch, moonshine_ready
+    model_path = None
+    model_arch = None
+    moonshine_ready = False
+    print("Moonshine model unloaded from memory.")
+
+
 def _pcm_stereo_s16le_to_float32_mono(pcm_bytes: bytes) -> np.ndarray:
     """Convert 48 kHz stereo s16le PCM to mono float32 ndarray for Moonshine."""
     samples = np.frombuffer(pcm_bytes, dtype=np.int16)
@@ -613,10 +635,6 @@ class TranscribeSink(voice_recv.AudioSink):
 async def transcribe(interaction: discord.Interaction):
     global TRANSCRIBE, transcribe_channel, active_transcriber, active_transcribe_sink
 
-    if not moonshine_ready:
-        await interaction.response.send_message("Moonshine model is not available — transcription unavailable.", ephemeral=True)
-        return
-
     member = interaction.user
     async with TRANSCRIBE_LOCK:
         if not TRANSCRIBE:
@@ -648,6 +666,15 @@ async def transcribe(interaction: discord.Interaction):
                 return
 
             await interaction.response.defer()
+
+            # Load the model on demand
+            loaded = await bot.loop.run_in_executor(None, _load_moonshine_model)
+            if not loaded:
+                await interaction.followup.send(
+                    "Moonshine model failed to load — transcription unavailable.",
+                    ephemeral=True,
+                )
+                return
 
             try:
                 if vc.is_listening():
@@ -693,6 +720,7 @@ async def transcribe(interaction: discord.Interaction):
 
             await _shutdown_active_transcribe_sink()
             await _close_active_transcriber()
+            await bot.loop.run_in_executor(None, _unload_moonshine_model)
             transcribe_channel = None
 
             if vc and vc.is_connected() and not VOICE:
