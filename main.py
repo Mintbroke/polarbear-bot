@@ -19,7 +19,7 @@ from gtts import gTTS
 from pydub import AudioSegment
 import emoji
 import re
-from deep_translator import GoogleTranslator
+from googletrans import Translator
 
 from datetime import date
 from datetime import datetime
@@ -434,24 +434,24 @@ async def on_message(d_message: discord.Message):
 def contains_foreign_letters(text: str):
     return any(ch.isalpha() and ord(ch) > 127 for ch in text)
 
+async def translate_to_english(text: str):
+    try:
+        async with Translator(service_urls=["translate.google.com"]) as translator:
+            translated = await translator.translate(text, dest="en", src="auto")
+            return translated.text.strip()
+    except Exception as e:
+        print(f"Googletrans error: {e}")
+        return None
+
 async def send_translation_if_foreign(message: discord.Message):
     content = replace_mentions_and_emojis(message).strip()
     if not content or not contains_foreign_letters(content):
         return
 
-    try:
-        translated = await asyncio.to_thread(
-            GoogleTranslator(source="auto", target="en").translate,
-            content
-        )
-    except Exception as e:
-        print(f"Translation error: {e}")
-        return
-
+    translated = await translate_to_english(content)
     if not translated:
         return
 
-    translated = translated.strip()
     if translated.casefold() == content.casefold():
         return
 

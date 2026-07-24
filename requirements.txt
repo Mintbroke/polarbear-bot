@@ -26,6 +26,6 @@ moonshine-voice
 
 # Text processing
 emoji==2.2.0
-deep-translator==1.11.4
+googletrans==4.0.2
 
 Pillow>=10.0.0
