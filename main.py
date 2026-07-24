@@ -5,21 +5,25 @@ from discord import app_commands
 from discord.ext import commands
 import discord.ext.voice_recv as voice_recv
 import os
+from dotenv import load_dotenv
 import random
 import asyncio
 import struct
 import time
 import wave
+import html
+import json
 import numpy as np
 import queue
 from collections import defaultdict
 import threading
+import urllib.error
+import urllib.request
 #import psycopg2
 from gtts import gTTS
 from pydub import AudioSegment
 import emoji
 import re
-from googletrans import Translator
 
 from datetime import date
 from datetime import datetime
@@ -32,6 +36,8 @@ import io
 
 from moonshine_voice import Transcriber, TranscriptEventListener, get_model_for_language, ModelArch
 from moonshine_voice.transcriber import LineCompleted
+
+load_dotenv()
 
 # Moonshine model is loaded on-demand when /transcribe is used
 model_path = None
@@ -61,7 +67,7 @@ active_transcriber = None  # Moonshine Transcriber instance
 active_transcribe_sink = None  # Discord receive sink that owns Moonshine streams
 TRANSCRIBE_DEBUG = os.getenv("TRANSCRIBE_DEBUG", "").lower() in ("1", "true", "yes")
 
-GOAT_ID = int(os.getenv("GOAT_ID"))
+GOAT_ID = int(os.getenv("GOAT_ID", "0"))
 glaze_phrase = "so good so goat so smart so intelligent so rich so handsome so sexy so cute so courageous so adventurous so creative so amiable so charismatic so authentic so calm so cheerful so good looking so charming so compassionate so dynamic so adaptable so agreeable so amazing so keen so genius so clever so ambitious so bright so diligent so passionate so admirable so affable so affectionate so amicable so considerate so energetic so fabulous so generous so nice so buffed so cool so hot so insightful so thoughtful so brave so loyal so sincere so witty"
 glaze_words = set(glaze_phrase.split(" "))
 glaze_words.remove("so")
@@ -71,13 +77,20 @@ end_d_date = "2027-04-12"
 
 
 opus_lib = ctypes.util.find_library("opus")
-print("ctypes.util.find_library('opus') →", opus_lib)
+print("ctypes.util.find_library('opus') ->", opus_lib)
 if not opus_lib:
-    opus_lib = "/usr/lib/x86_64-linux-gnu/libopus.so.0"
-discord.opus.load_opus(opus_lib)
+    linux_opus_lib = "/usr/lib/x86_64-linux-gnu/libopus.so.0"
+    if os.path.exists(linux_opus_lib):
+        opus_lib = linux_opus_lib
+if opus_lib:
+    discord.opus.load_opus(opus_lib)
+else:
+    print("Opus library not found; voice features may be unavailable.")
 print(discord.opus.is_loaded())
 
 EMOJI_RE = re.compile(r'<a?:(?P<name>\w+):\d+>')
+GOOGLE_TRANSLATE_URL = "https://translation.googleapis.com/language/translate/v2"
+TRANSLATE_CONFIG_WARNED = False
 
 # daily mine limit
 DAILY_LIMIT = 20
@@ -435,13 +448,57 @@ def contains_foreign_letters(text: str):
     return any(ch.isalpha() and ord(ch) > 127 for ch in text)
 
 async def translate_to_english(text: str):
-    try:
-        async with Translator() as translator:
-            translated = await translator.translate(text, dest="en", src="auto")
-            return translated.text.strip()
-    except Exception as e:
-        print(f"Googletrans error: {e}")
+    return await asyncio.to_thread(translate_to_english_sync, text)
+
+def get_google_translate_api_key():
+    return os.getenv("GOOGLE_TRANSLATE_API_KEY") or os.getenv("GOOGLE_CLOUD_TRANSLATE_API_KEY")
+
+def translate_to_english_sync(text: str):
+    global TRANSLATE_CONFIG_WARNED
+
+    api_key = get_google_translate_api_key()
+    if not api_key:
+        if not TRANSLATE_CONFIG_WARNED:
+            print("Google Cloud Translation disabled: set GOOGLE_TRANSLATE_API_KEY.")
+            TRANSLATE_CONFIG_WARNED = True
         return None
+
+    payload = {
+        "q": text,
+        "target": "en",
+        "format": "text",
+    }
+    model = os.getenv("GOOGLE_TRANSLATE_MODEL")
+    if model:
+        payload["model"] = model
+
+    request = urllib.request.Request(
+        GOOGLE_TRANSLATE_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "X-goog-api-key": api_key,
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace")
+        print(f"Google Cloud Translation HTTP error {e.code}: {error_body}")
+        return None
+    except Exception as e:
+        print(f"Google Cloud Translation error: {e}")
+        return None
+
+    translations = body.get("data", {}).get("translations", [])
+    if not translations:
+        return None
+
+    translated = translations[0].get("translatedText", "")
+    return html.unescape(translated).strip()
 
 async def send_translation_if_foreign(message: discord.Message):
     content = replace_mentions_and_emojis(message).strip()

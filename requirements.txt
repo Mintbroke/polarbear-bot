@@ -2,6 +2,7 @@
 # Essential Discord bot dependencies
 discord.py>=2.5.2
 flask==3.0.2
+python-dotenv==1.0.1
 
 # AI/ML Dependencies - Optimized for Railway (8GB RAM)
 # NumPy compatibility fix for PyTorch
@@ -26,6 +27,5 @@ moonshine-voice
 
 # Text processing
 emoji==2.2.0
-googletrans==4.0.2
 
 Pillow>=10.0.0
