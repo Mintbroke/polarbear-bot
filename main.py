@@ -19,6 +19,7 @@ from gtts import gTTS
 from pydub import AudioSegment
 import emoji
 import re
+from deep_translator import GoogleTranslator
 
 from datetime import date
 from datetime import datetime
@@ -390,11 +391,16 @@ async def on_message(d_message: discord.Message):
     else:
         print("no bot ping")
     '''
+    if(d_message.author.bot):
+        return
+
+    await send_translation_if_foreign(d_message)
+
     if(d_message.author.id == GOAT_ID):
         channel = d_message.channel
         if(any(word in d_message.content.lower() for word in glaze_words)):
             await channel.send(f"{d_message.author.mention} {glaze_phrase}")
-    if(d_message.author.bot or not VOICE or len(d_message.content) > 200 or any(link in d_message.content.lower() for link in link_set)):
+    if(not VOICE or len(d_message.content) > 200 or any(link in d_message.content.lower() for link in link_set)):
         return
     global previous_author
     async with VOICE_LOCK:
@@ -424,6 +430,35 @@ async def on_message(d_message: discord.Message):
             if vc is None:
                 return
             vc.play(source)
+
+def contains_foreign_letters(text: str):
+    return any(ch.isalpha() and ord(ch) > 127 for ch in text)
+
+async def send_translation_if_foreign(message: discord.Message):
+    content = replace_mentions_and_emojis(message).strip()
+    if not content or not contains_foreign_letters(content):
+        return
+
+    try:
+        translated = await asyncio.to_thread(
+            GoogleTranslator(source="auto", target="en").translate,
+            content
+        )
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return
+
+    if not translated:
+        return
+
+    translated = translated.strip()
+    if translated.casefold() == content.casefold():
+        return
+
+    if len(translated) > 1900:
+        translated = translated[:1900] + "..."
+
+    await message.channel.send(f"Translation: {translated}")
 
 def replace_mentions_and_emojis(message):
     content = message.content
