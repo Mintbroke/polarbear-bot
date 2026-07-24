@@ -436,7 +436,7 @@ def contains_foreign_letters(text: str):
 
 async def translate_to_english(text: str):
     try:
-        async with Translator(service_urls=["translate.google.com"]) as translator:
+        async with Translator() as translator:
             translated = await translator.translate(text, dest="en", src="auto")
             return translated.text.strip()
     except Exception as e:
