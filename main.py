@@ -2,7 +2,7 @@ import discord
 import discord.opus
 import ctypes.util
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import discord.ext.voice_recv as voice_recv
 import os
 from dotenv import load_dotenv
@@ -13,13 +13,18 @@ import time
 import wave
 import html
 import json
+import sqlite3
+import calendar
 import numpy as np
 import queue
 from collections import defaultdict
 import threading
 import urllib.error
 import urllib.request
-#import psycopg2
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 from gtts import gTTS
 from pydub import AudioSegment
 import emoji
@@ -75,6 +80,30 @@ glaze_words.remove("so")
 start_d_date = "2025-10-12"
 end_d_date = "2027-04-12"
 
+DEFAULT_BIRTHDAY_TIMEZONE = os.getenv("BIRTHDAY_TIMEZONE", "America/Los_Angeles")
+try:
+    DEFAULT_BIRTHDAY_ANNOUNCE_HOUR = int(os.getenv("BIRTHDAY_ANNOUNCE_HOUR", "9"))
+except ValueError:
+    DEFAULT_BIRTHDAY_ANNOUNCE_HOUR = 9
+DEFAULT_BIRTHDAY_ANNOUNCE_HOUR = max(0, min(23, DEFAULT_BIRTHDAY_ANNOUNCE_HOUR))
+DB_URL = os.getenv("DB_URL") or os.getenv("DATABASE_URL")
+BIRTHDAY_SQLITE_PATH = os.getenv("BIRTHDAY_SQLITE_PATH", "birthdays.sqlite3")
+BIRTHDAY_DB_READY = False
+BIRTHDAY_DB_WARNED = False
+BIRTHDAY_DB_LOCK = threading.Lock()
+
+BIRTHDAY_CAKE = "\U0001F382"
+BIRTHDAY_PARTY = "\U0001F389"
+BIRTHDAY_SNOW = "\u2744\ufe0f"
+BIRTHDAY_BEAR = "\U0001F43B\u200d\u2744\ufe0f"
+BIRTHDAY_MESSAGES = [
+    "happy birthday {mention}!! officially one year more goated {cake} {snow}",
+    "{mention} birthday detected. arctic celebration mode: on {party} {bear}",
+    "everybody chill for a sec and wish {mention} a happy birthday {cake} {snow}",
+    "happy birthday {mention}! may your day be colder than average and way more goated {party}",
+    "{mention} leveled up today. happy birthday from the ice shelf {cake} {bear}",
+]
+
 
 opus_lib = ctypes.util.find_library("opus")
 print("ctypes.util.find_library('opus') ->", opus_lib)
@@ -104,6 +133,10 @@ commands_list += "/remind [user] [time(minute)] [message] : Ping user with messa
 commands_list += "/voice : Switch on/off for message to speech function in vc\n"
 commands_list += "/voice_speed : /voice_speed [speed]\n"
 commands_list += "/transcribe : Toggle live voice-to-text transcription in vc\n"
+commands_list += "/birthday_set [month] [day] : Save your birthday\n"
+commands_list += "/birthday_remove : Remove your birthday\n"
+commands_list += "/birthday_next : Show upcoming birthdays\n"
+commands_list += "/birthday_channel [channel] [timezone] [announce_hour] : Set birthday announcement channel\n"
 
 '''
 commands_list += "\nSSAL COMMANDS: \n"
@@ -211,11 +244,391 @@ def save_ssal_coins(userid : str):
 #-------------------------------------------DATABASE-LOAD-SAVE----------------------------------------------#
 #############################################################################################################
 '''
+
+#############################################################################################################
+#------------------------------------------BIRTHDAY-DATABASE------------------------------------------------#
+def birthday_db_uses_postgres():
+    return bool(DB_URL and psycopg2 is not None)
+
+
+def birthday_param():
+    return "%s" if birthday_db_uses_postgres() else "?"
+
+
+def connect_birthday_db():
+    global BIRTHDAY_DB_WARNED
+
+    if birthday_db_uses_postgres():
+        return psycopg2.connect(DB_URL)
+
+    if DB_URL and psycopg2 is None and not BIRTHDAY_DB_WARNED:
+        print("DB_URL found, but psycopg2 is not installed. Falling back to SQLite.")
+        BIRTHDAY_DB_WARNED = True
+
+    conn = sqlite3.connect(BIRTHDAY_SQLITE_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def close_birthday_cursor(cur):
+    try:
+        cur.close()
+    except Exception:
+        pass
+
+
+def init_birthday_db():
+    global BIRTHDAY_DB_READY
+
+    if BIRTHDAY_DB_READY:
+        return
+
+    with BIRTHDAY_DB_LOCK:
+        if BIRTHDAY_DB_READY:
+            return
+
+        conn = connect_birthday_db()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS birthdays (
+                    guild_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+                    day INTEGER NOT NULL CHECK (day BETWEEN 1 AND 31),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, user_id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS birthday_settings (
+                    guild_id TEXT PRIMARY KEY,
+                    channel_id TEXT,
+                    timezone TEXT NOT NULL,
+                    announce_hour INTEGER NOT NULL CHECK (announce_hour BETWEEN 0 AND 23),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS birthday_announcements (
+                    guild_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    year INTEGER NOT NULL,
+                    sent_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (guild_id, user_id, year)
+                )
+            """)
+            conn.commit()
+            BIRTHDAY_DB_READY = True
+        finally:
+            close_birthday_cursor(cur)
+            conn.close()
+
+
+def birthday_write(sql, params=()):
+    init_birthday_db()
+    with BIRTHDAY_DB_LOCK:
+        conn = connect_birthday_db()
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, params)
+            rowcount = cur.rowcount
+            conn.commit()
+            return rowcount
+        finally:
+            close_birthday_cursor(cur)
+            conn.close()
+
+
+def birthday_fetch_one(sql, params=()):
+    init_birthday_db()
+    with BIRTHDAY_DB_LOCK:
+        conn = connect_birthday_db()
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, params)
+            return cur.fetchone()
+        finally:
+            close_birthday_cursor(cur)
+            conn.close()
+
+
+def birthday_fetch_all(sql, params=()):
+    init_birthday_db()
+    with BIRTHDAY_DB_LOCK:
+        conn = connect_birthday_db()
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, params)
+            return cur.fetchall()
+        finally:
+            close_birthday_cursor(cur)
+            conn.close()
+
+
+def save_birthday(guild_id, user_id, month, day):
+    ph = birthday_param()
+    birthday_write(f"""
+        INSERT INTO birthdays (guild_id, user_id, month, day, created_at, updated_at)
+        VALUES ({ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (guild_id, user_id) DO UPDATE SET
+            month = EXCLUDED.month,
+            day = EXCLUDED.day,
+            updated_at = CURRENT_TIMESTAMP
+    """, (guild_id, user_id, month, day))
+
+
+def remove_birthday(guild_id, user_id):
+    ph = birthday_param()
+    return birthday_write(
+        f"DELETE FROM birthdays WHERE guild_id = {ph} AND user_id = {ph}",
+        (guild_id, user_id),
+    )
+
+
+def save_birthday_settings(guild_id, channel_id, timezone, announce_hour):
+    ph = birthday_param()
+    birthday_write(f"""
+        INSERT INTO birthday_settings (
+            guild_id, channel_id, timezone, announce_hour, created_at, updated_at
+        )
+        VALUES ({ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (guild_id) DO UPDATE SET
+            channel_id = EXCLUDED.channel_id,
+            timezone = EXCLUDED.timezone,
+            announce_hour = EXCLUDED.announce_hour,
+            updated_at = CURRENT_TIMESTAMP
+    """, (guild_id, channel_id, timezone, announce_hour))
+
+
+def get_birthday_settings(guild_id):
+    ph = birthday_param()
+    row = birthday_fetch_one(
+        f"SELECT channel_id, timezone, announce_hour FROM birthday_settings WHERE guild_id = {ph}",
+        (guild_id,),
+    )
+    if not row:
+        return {
+            "channel_id": None,
+            "timezone": DEFAULT_BIRTHDAY_TIMEZONE,
+            "announce_hour": DEFAULT_BIRTHDAY_ANNOUNCE_HOUR,
+        }
+
+    return {
+        "channel_id": row[0],
+        "timezone": row[1],
+        "announce_hour": row[2],
+    }
+
+
+def get_all_birthdays(guild_id):
+    ph = birthday_param()
+    return birthday_fetch_all(
+        f"SELECT user_id, month, day FROM birthdays WHERE guild_id = {ph}",
+        (guild_id,),
+    )
+
+
+def get_birthdays_for_local_date(guild_id, local_date):
+    ph = birthday_param()
+    include_leap_day = (
+        local_date.month == 2 and
+        local_date.day == 28 and
+        not calendar.isleap(local_date.year)
+    )
+
+    if include_leap_day:
+        return birthday_fetch_all(f"""
+            SELECT user_id, month, day
+            FROM birthdays
+            WHERE guild_id = {ph}
+              AND (
+                (month = {ph} AND day = {ph})
+                OR (month = 2 AND day = 29)
+              )
+        """, (guild_id, local_date.month, local_date.day))
+
+    return birthday_fetch_all(f"""
+        SELECT user_id, month, day
+        FROM birthdays
+        WHERE guild_id = {ph} AND month = {ph} AND day = {ph}
+    """, (guild_id, local_date.month, local_date.day))
+
+
+def was_birthday_announced(guild_id, user_id, year):
+    ph = birthday_param()
+    row = birthday_fetch_one(f"""
+        SELECT 1
+        FROM birthday_announcements
+        WHERE guild_id = {ph} AND user_id = {ph} AND year = {ph}
+    """, (guild_id, user_id, year))
+    return row is not None
+
+
+def mark_birthday_announced(guild_id, user_id, year):
+    ph = birthday_param()
+    birthday_write(f"""
+        INSERT INTO birthday_announcements (guild_id, user_id, year, sent_at)
+        VALUES ({ph}, {ph}, {ph}, CURRENT_TIMESTAMP)
+        ON CONFLICT (guild_id, user_id, year) DO NOTHING
+    """, (guild_id, user_id, year))
+
+
+def validate_birthday(month, day):
+    try:
+        date(2000, month, day)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_timezone(timezone):
+    try:
+        ZoneInfo(timezone)
+        return True
+    except Exception:
+        return False
+
+
+def birthday_date_for_year(month, day, year):
+    if month == 2 and day == 29 and not calendar.isleap(year):
+        return date(year, 2, 28)
+    return date(year, month, day)
+
+
+def next_birthday_date(month, day, today):
+    next_date = birthday_date_for_year(month, day, today.year)
+    if next_date < today:
+        next_date = birthday_date_for_year(month, day, today.year + 1)
+    return next_date
+
+
+def format_birthday(month, day):
+    return f"{calendar.month_name[month]} {day}"
+
+
+def format_birthday_member(guild, user_id):
+    try:
+        member = guild.get_member(int(user_id))
+    except ValueError:
+        member = None
+
+    if member:
+        return discord.utils.escape_markdown(member.display_name)
+    return f"<@{user_id}>"
+
+
+def get_upcoming_birthdays(guild, limit):
+    guild_id = str(guild.id)
+    settings = get_birthday_settings(guild_id)
+    try:
+        today = datetime.now(ZoneInfo(settings["timezone"])).date()
+    except Exception:
+        today = datetime.now(ZoneInfo(DEFAULT_BIRTHDAY_TIMEZONE)).date()
+
+    upcoming = []
+    for user_id, month, day in get_all_birthdays(guild_id):
+        target_date = next_birthday_date(month, day, today)
+        upcoming.append({
+            "user_id": user_id,
+            "name": format_birthday_member(guild, user_id),
+            "month": month,
+            "day": day,
+            "date": target_date,
+            "days_until": (target_date - today).days,
+        })
+
+    upcoming.sort(key=lambda b: (b["date"], b["name"].casefold()))
+    return upcoming[:limit]
+
+
+async def resolve_birthday_channel(guild, channel_id):
+    if not channel_id:
+        return None
+
+    try:
+        channel_id_int = int(channel_id)
+    except ValueError:
+        return None
+
+    channel = guild.get_channel(channel_id_int) or bot.get_channel(channel_id_int)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(channel_id_int)
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+            return None
+
+    if not hasattr(channel, "send"):
+        return None
+    return channel
+
+
+async def announce_birthdays_for_guild(guild):
+    guild_id = str(guild.id)
+    settings = get_birthday_settings(guild_id)
+    channel = await resolve_birthday_channel(guild, settings["channel_id"])
+    if channel is None:
+        return
+
+    try:
+        now = datetime.now(ZoneInfo(settings["timezone"]))
+    except Exception:
+        now = datetime.now(ZoneInfo(DEFAULT_BIRTHDAY_TIMEZONE))
+
+    if now.hour < settings["announce_hour"]:
+        return
+
+    rows = get_birthdays_for_local_date(guild_id, now.date())
+    for user_id, month, day in rows:
+        if was_birthday_announced(guild_id, user_id, now.year):
+            continue
+
+        message = random.choice(BIRTHDAY_MESSAGES).format(
+            mention=f"<@{user_id}>",
+            cake=BIRTHDAY_CAKE,
+            party=BIRTHDAY_PARTY,
+            snow=BIRTHDAY_SNOW,
+            bear=BIRTHDAY_BEAR,
+        )
+        try:
+            await channel.send(
+                message,
+                allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+            )
+            mark_birthday_announced(guild_id, user_id, now.year)
+        except discord.HTTPException as e:
+            print(f"Birthday announcement failed for guild {guild_id}, user {user_id}: {e}")
+
+
+@tasks.loop(minutes=30)
+async def birthday_announcements():
+    for guild in bot.guilds:
+        try:
+            await announce_birthdays_for_guild(guild)
+        except Exception as e:
+            print(f"Birthday check failed for guild {guild.id}: {type(e).__name__}: {e}")
+
+
+@birthday_announcements.before_loop
+async def before_birthday_announcements():
+    await bot.wait_until_ready()
+
+
+#------------------------------------------BIRTHDAY-DATABASE------------------------------------------------#
+#############################################################################################################
 #############################################################################################################
 #---------------------------------------------BOT-FUNCTIONS-------------------------------------------------#
 
 @bot.event
 async def on_ready():
+    try:
+        init_birthday_db()
+    except Exception as e:
+        print(f"Birthday database failed to initialize: {type(e).__name__}: {e}")
+    if not birthday_announcements.is_running():
+        birthday_announcements.start()
     await bot.tree.sync()
     print("Slash commands synced!")
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
@@ -223,6 +636,156 @@ async def on_ready():
 @bot.tree.command(name="list", description="Command list for bot")
 async def list_commands(interaction: discord.Interaction):
     await interaction.response.send_message(commands_list, ephemeral=True)
+
+
+@bot.tree.command(name="birthday_set", description="Save your birthday")
+@app_commands.describe(month="Month number, 1-12", day="Day of the month")
+async def birthday_set(
+    interaction: discord.Interaction,
+    month: app_commands.Range[int, 1, 12],
+    day: app_commands.Range[int, 1, 31],
+):
+    if interaction.guild is None:
+        await interaction.response.send_message("birthdays are server-only for now.", ephemeral=True)
+        return
+
+    if not validate_birthday(month, day):
+        await interaction.response.send_message("that date does not exist, even in the arctic.", ephemeral=True)
+        return
+
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+    try:
+        save_birthday(guild_id, user_id, int(month), int(day))
+        settings = get_birthday_settings(guild_id)
+    except Exception as e:
+        print(f"birthday_set failed: {type(e).__name__}: {e}")
+        await interaction.response.send_message("birthday database is being icy right now.", ephemeral=True)
+        return
+
+    message = f"saved your birthday as {format_birthday(int(month), int(day))} {BIRTHDAY_SNOW}"
+    if not settings["channel_id"]:
+        message += "\nadmins can turn on announcements with `/birthday_channel`."
+    await interaction.response.send_message(message, ephemeral=True)
+
+
+@bot.tree.command(name="birthday_remove", description="Remove your saved birthday")
+async def birthday_remove(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message("birthdays are server-only for now.", ephemeral=True)
+        return
+
+    try:
+        deleted = remove_birthday(str(interaction.guild.id), str(interaction.user.id))
+    except Exception as e:
+        print(f"birthday_remove failed: {type(e).__name__}: {e}")
+        await interaction.response.send_message("birthday database is being icy right now.", ephemeral=True)
+        return
+
+    if deleted:
+        await interaction.response.send_message("removed your birthday.", ephemeral=True)
+    else:
+        await interaction.response.send_message("you did not have a birthday saved.", ephemeral=True)
+
+
+@bot.tree.command(name="birthday_next", description="Show upcoming birthdays")
+@app_commands.describe(limit="How many birthdays to show")
+async def birthday_next(
+    interaction: discord.Interaction,
+    limit: app_commands.Range[int, 1, 25] = 10,
+):
+    if interaction.guild is None:
+        await interaction.response.send_message("birthdays are server-only for now.", ephemeral=True)
+        return
+
+    try:
+        upcoming = get_upcoming_birthdays(interaction.guild, int(limit))
+    except Exception as e:
+        print(f"birthday_next failed: {type(e).__name__}: {e}")
+        await interaction.response.send_message("birthday database is being icy right now.", ephemeral=True)
+        return
+
+    if not upcoming:
+        await interaction.response.send_message("no birthdays saved yet.", ephemeral=True)
+        return
+
+    lines = ["upcoming birthdays:"]
+    for index, birthday in enumerate(upcoming, start=1):
+        stored_date = format_birthday(birthday["month"], birthday["day"])
+        observed_date = format_birthday(birthday["date"].month, birthday["date"].day)
+        date_text = stored_date
+        if observed_date != stored_date:
+            date_text = f"{stored_date} (observed {observed_date})"
+
+        days_until = birthday["days_until"]
+        if days_until == 0:
+            when = "today"
+        elif days_until == 1:
+            when = "tomorrow"
+        else:
+            when = f"in {days_until} days"
+
+        lines.append(f"{index}. {birthday['name']} - {date_text} - {when}")
+
+    await interaction.response.send_message(
+        "\n".join(lines),
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@bot.tree.command(name="birthday_channel", description="Set birthday announcement channel")
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.describe(
+    channel="Channel for birthday announcements",
+    timezone="IANA timezone, like America/Los_Angeles",
+    announce_hour="Hour to announce birthdays, 0-23",
+)
+async def birthday_channel(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel,
+    timezone: str = DEFAULT_BIRTHDAY_TIMEZONE,
+    announce_hour: app_commands.Range[int, 0, 23] = DEFAULT_BIRTHDAY_ANNOUNCE_HOUR,
+):
+    if interaction.guild is None:
+        await interaction.response.send_message("birthdays are server-only for now.", ephemeral=True)
+        return
+
+    if not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message("you need Manage Server to set the birthday channel.", ephemeral=True)
+        return
+
+    if not validate_timezone(timezone):
+        await interaction.response.send_message(
+            "that timezone does not look valid. try something like `America/Los_Angeles`.",
+            ephemeral=True,
+        )
+        return
+
+    bot_member = interaction.guild.me
+    if bot_member and not channel.permissions_for(bot_member).send_messages:
+        await interaction.response.send_message(
+            f"i cannot send messages in {channel.mention} yet.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        save_birthday_settings(
+            str(interaction.guild.id),
+            str(channel.id),
+            timezone,
+            int(announce_hour),
+        )
+    except Exception as e:
+        print(f"birthday_channel failed: {type(e).__name__}: {e}")
+        await interaction.response.send_message("birthday database is being icy right now.", ephemeral=True)
+        return
+
+    await interaction.response.send_message(
+        f"birthday announcements will go to {channel.mention} at {int(announce_hour):02d}:00 {timezone}.",
+        ephemeral=True,
+    )
+
 
 # coin flip: /coin
 @bot.tree.command(name="coin", description="flip a coin")

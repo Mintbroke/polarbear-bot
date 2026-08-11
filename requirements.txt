@@ -23,7 +23,7 @@ discord-ext-voice-recv @ https://github.com/vocolboy/discord-ext-voice-recv/arch
 moonshine-voice
 
 # Database support
-#psycopg2-binary==2.9.6
+psycopg2-binary==2.9.6
 
 # Text processing
 emoji==2.2.0
