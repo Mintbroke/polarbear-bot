@@ -13,13 +13,13 @@ import time
 import wave
 import html
 import json
-import sqlite3
 import calendar
 import numpy as np
 import queue
 from collections import defaultdict
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 try:
     import psycopg2
@@ -86,14 +86,13 @@ try:
 except ValueError:
     DEFAULT_BIRTHDAY_ANNOUNCE_HOUR = 9
 DEFAULT_BIRTHDAY_ANNOUNCE_HOUR = max(0, min(23, DEFAULT_BIRTHDAY_ANNOUNCE_HOUR))
+DB_URL_SOURCE = "DB_URL" if os.getenv("DB_URL") else "DATABASE_URL" if os.getenv("DATABASE_URL") else None
 DB_URL = os.getenv("DB_URL") or os.getenv("DATABASE_URL")
-BIRTHDAY_SQLITE_PATH = os.getenv("BIRTHDAY_SQLITE_PATH", "birthdays.sqlite3")
 try:
     BIRTHDAY_ADMIN_ID = int(os.getenv("BIRTHDAY_ADMIN_ID", "0"))
 except ValueError:
     BIRTHDAY_ADMIN_ID = 0
 BIRTHDAY_DB_READY = False
-BIRTHDAY_DB_WARNED = False
 BIRTHDAY_DB_LOCK = threading.Lock()
 
 BIRTHDAY_CAKE = "\U0001F382"
@@ -251,27 +250,58 @@ def save_ssal_coins(userid : str):
 
 #############################################################################################################
 #------------------------------------------BIRTHDAY-DATABASE------------------------------------------------#
-def birthday_db_uses_postgres():
-    return bool(DB_URL and psycopg2 is not None)
-
-
 def birthday_param():
-    return "%s" if birthday_db_uses_postgres() else "?"
+    return "%s"
+
+
+def describe_db_url_target():
+    if not DB_URL:
+        return "no DB_URL or DATABASE_URL set"
+
+    try:
+        parsed = urllib.parse.urlparse(DB_URL)
+        scheme = parsed.scheme or "unknown-scheme"
+        host = parsed.hostname or "unknown-host"
+        try:
+            port = f":{parsed.port}" if parsed.port else ""
+        except ValueError:
+            port = ":invalid-port"
+        database = parsed.path.lstrip("/") or "unknown-database"
+        source = DB_URL_SOURCE or "database URL"
+        return f"{source} target {scheme}://{host}{port}/{database}"
+    except Exception:
+        source = DB_URL_SOURCE or "database URL"
+        return f"{source} target could not be parsed"
 
 
 def connect_birthday_db():
-    global BIRTHDAY_DB_WARNED
+    if not DB_URL:
+        print(
+            "Postgres is not configured for birthday database: "
+            "set DB_URL or DATABASE_URL. Birthday features require Postgres."
+        )
+        raise RuntimeError("DB_URL or DATABASE_URL is required for birthday database")
 
-    if birthday_db_uses_postgres():
-        return psycopg2.connect(DB_URL)
+    if psycopg2 is None:
+        print(
+            "Cannot use Postgres for birthday database: "
+            f"{describe_db_url_target()} is set, but psycopg2 is not installed. "
+            "Install requirements.txt to enable Postgres."
+        )
+        raise RuntimeError("psycopg2 is required for birthday database")
 
-    if DB_URL and psycopg2 is None and not BIRTHDAY_DB_WARNED:
-        print("DB_URL found, but psycopg2 is not installed. Falling back to SQLite.")
-        BIRTHDAY_DB_WARNED = True
-
-    conn = sqlite3.connect(BIRTHDAY_SQLITE_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        return psycopg2.connect(DB_URL, connect_timeout=10)
+    except Exception as e:
+        print(
+            "Birthday database Postgres connection failed "
+            f"for {describe_db_url_target()}: {type(e).__name__}: {e}"
+        )
+        print(
+            "Check DB_URL/DATABASE_URL, username/password, host/port, database name, SSL settings, "
+            "and whether the database accepts external connections."
+        )
+        raise
 
 
 def close_birthday_cursor(cur):
@@ -282,9 +312,7 @@ def close_birthday_cursor(cur):
 
 
 def birthday_db_backend_label():
-    if birthday_db_uses_postgres():
-        return "Postgres"
-    return f"SQLite ({BIRTHDAY_SQLITE_PATH})"
+    return "Postgres"
 
 
 def init_birthday_db():
@@ -297,9 +325,13 @@ def init_birthday_db():
         if BIRTHDAY_DB_READY:
             return
 
-        conn = connect_birthday_db()
-        cur = conn.cursor()
+        conn = None
+        cur = None
+        connected = False
         try:
+            conn = connect_birthday_db()
+            connected = True
+            cur = conn.cursor()
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS birthdays (
                     guild_id TEXT NOT NULL,
@@ -333,9 +365,22 @@ def init_birthday_db():
             conn.commit()
             BIRTHDAY_DB_READY = True
             print(f"Birthday database connected using {birthday_db_backend_label()}.")
+        except Exception as e:
+            if connected:
+                print(
+                    "Birthday database Postgres schema setup failed "
+                    f"for {describe_db_url_target()}: {type(e).__name__}: {e}"
+                )
+                print(
+                    "Postgres connection opened, but table setup failed. "
+                    "Check database permissions and schema/table privileges."
+                )
+            raise
         finally:
-            close_birthday_cursor(cur)
-            conn.close()
+            if cur is not None:
+                close_birthday_cursor(cur)
+            if conn is not None:
+                conn.close()
 
 
 def birthday_write(sql, params=()):
@@ -646,7 +691,8 @@ async def on_ready():
         init_birthday_db()
     except Exception as e:
         print(f"Birthday database failed to initialize: {type(e).__name__}: {e}")
-    if not birthday_announcements.is_running():
+    birthday_db_can_retry = bool(DB_URL and psycopg2 is not None)
+    if (BIRTHDAY_DB_READY or birthday_db_can_retry) and not birthday_announcements.is_running():
         birthday_announcements.start()
     await bot.tree.sync()
     print("Slash commands synced!")
