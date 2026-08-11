@@ -281,6 +281,12 @@ def close_birthday_cursor(cur):
         pass
 
 
+def birthday_db_backend_label():
+    if birthday_db_uses_postgres():
+        return "Postgres"
+    return f"SQLite ({BIRTHDAY_SQLITE_PATH})"
+
+
 def init_birthday_db():
     global BIRTHDAY_DB_READY
 
@@ -326,6 +332,7 @@ def init_birthday_db():
             """)
             conn.commit()
             BIRTHDAY_DB_READY = True
+            print(f"Birthday database connected using {birthday_db_backend_label()}.")
         finally:
             close_birthday_cursor(cur)
             conn.close()
@@ -614,7 +621,7 @@ async def announce_birthdays_for_guild(guild):
             print(f"Birthday announcement failed for guild {guild_id}, user {user_id}: {e}")
 
 
-@tasks.loop(minutes=30)
+@tasks.loop(minutes=1)
 async def birthday_announcements():
     for guild in bot.guilds:
         try:
