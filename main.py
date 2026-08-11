@@ -88,6 +88,10 @@ except ValueError:
 DEFAULT_BIRTHDAY_ANNOUNCE_HOUR = max(0, min(23, DEFAULT_BIRTHDAY_ANNOUNCE_HOUR))
 DB_URL = os.getenv("DB_URL") or os.getenv("DATABASE_URL")
 BIRTHDAY_SQLITE_PATH = os.getenv("BIRTHDAY_SQLITE_PATH", "birthdays.sqlite3")
+try:
+    BIRTHDAY_ADMIN_ID = int(os.getenv("BIRTHDAY_ADMIN_ID", "0"))
+except ValueError:
+    BIRTHDAY_ADMIN_ID = 0
 BIRTHDAY_DB_READY = False
 BIRTHDAY_DB_WARNED = False
 BIRTHDAY_DB_LOCK = threading.Lock()
@@ -492,6 +496,14 @@ def validate_timezone(timezone):
         return False
 
 
+def is_birthday_admin(interaction):
+    guild_permissions = getattr(interaction.user, "guild_permissions", None)
+    has_manage_guild = bool(guild_permissions and guild_permissions.manage_guild)
+    has_birthday_admin_id = BIRTHDAY_ADMIN_ID and interaction.user.id == BIRTHDAY_ADMIN_ID
+    is_guild_owner = interaction.guild and interaction.guild.owner_id == interaction.user.id
+    return has_manage_guild or has_birthday_admin_id or is_guild_owner
+
+
 def birthday_date_for_year(month, day, year):
     if month == 2 and day == 29 and not calendar.isleap(year):
         return date(year, 2, 28)
@@ -734,7 +746,6 @@ async def birthday_next(
 
 
 @bot.tree.command(name="birthday_channel", description="Set birthday announcement channel")
-@app_commands.default_permissions(manage_guild=True)
 @app_commands.describe(
     channel="Channel for birthday announcements",
     timezone="IANA timezone, like America/Los_Angeles",
@@ -750,8 +761,11 @@ async def birthday_channel(
         await interaction.response.send_message("birthdays are server-only for now.", ephemeral=True)
         return
 
-    if not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message("you need Manage Server to set the birthday channel.", ephemeral=True)
+    if not is_birthday_admin(interaction):
+        await interaction.response.send_message(
+            "you need to be the server owner, have Manage Server, or have birthday admin access.",
+            ephemeral=True,
+        )
         return
 
     if not validate_timezone(timezone):
