@@ -16,7 +16,7 @@ import json
 import calendar
 import numpy as np
 import queue
-from collections import defaultdict
+from collections import defaultdict, deque
 import threading
 import urllib.error
 import urllib.parse
@@ -94,18 +94,16 @@ except ValueError:
     BIRTHDAY_ADMIN_ID = 0
 BIRTHDAY_DB_READY = False
 BIRTHDAY_DB_LOCK = threading.Lock()
+BIRTHDAY_RESPONSES_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "birthday_responses.json",
+)
+BIRTHDAY_REPEAT_COOLDOWN = 15
 
 BIRTHDAY_CAKE = "\U0001F382"
 BIRTHDAY_PARTY = "\U0001F389"
 BIRTHDAY_SNOW = "\u2744\ufe0f"
 BIRTHDAY_BEAR = "\U0001F43B\u200d\u2744\ufe0f"
-BIRTHDAY_MESSAGES = [
-    "happy birthday {mention}!! officially one year more goated {cake} {snow}",
-    "{mention} birthday detected. arctic celebration mode: on {party} {bear}",
-    "everybody chill for a sec and wish {mention} a happy birthday {cake} {snow}",
-    "happy birthday {mention}! may your day be colder than average and way more goated {party}",
-    "{mention} leveled up today. happy birthday from the ice shelf {cake} {bear}",
-]
 
 
 opus_lib = ctypes.util.find_library("opus")
@@ -127,11 +125,18 @@ TRANSLATE_CONFIG_WARNED = False
 # daily mine limit
 DAILY_LIMIT = 20
 
+WHIP_RESPONSES_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "whip_responses.json",
+)
+WHIP_REPEAT_COOLDOWN = 15
+
 # message for /list
 commands_list = "NORMAL COMMANDS: \n"
 commands_list += "/coin : Flip a coin\n"
 commands_list += "/dice : Roll a dice\n"
 commands_list += "/pick [choice1, choice2, choice3, ...] : Pick a random choice\n"
+commands_list += "/whip : Punish the bot\n"
 commands_list += "/remind [user] [time(minute)] [message] : Ping user with message after delay\n"
 commands_list += "/voice : Switch on/off for message to speech function in vc\n"
 commands_list += "/voice_speed : /voice_speed [speed]\n"
@@ -177,6 +182,128 @@ ssal_price = {"ssal_multiplier" : 100}
 # thread 
 lock = threading.Lock()
 ai_lock = asyncio.Lock()
+WHIP_LOCK = asyncio.Lock()
+WHIP_RECENT_RESPONSES = deque(maxlen=WHIP_REPEAT_COOLDOWN)
+BIRTHDAY_LOCK = asyncio.Lock()
+BIRTHDAY_RECENT_RESPONSES = deque(maxlen=BIRTHDAY_REPEAT_COOLDOWN)
+
+
+def load_whip_responses():
+    fallback = [
+        "punishment received. i tried to load the big response list and got punished by json."
+    ]
+
+    try:
+        with open(WHIP_RESPONSES_FILE, "r", encoding="utf-8") as file:
+            responses = json.load(file)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"Failed to load whip responses from {WHIP_RESPONSES_FILE}: {type(e).__name__}: {e}")
+        return fallback
+
+    if not isinstance(responses, list):
+        print(f"Whip responses file must contain a JSON array: {WHIP_RESPONSES_FILE}")
+        return fallback
+
+    cleaned_responses = [
+        response.strip() for response in responses
+        if isinstance(response, str) and response.strip()
+    ]
+    if not cleaned_responses:
+        print(f"Whip responses file has no usable responses: {WHIP_RESPONSES_FILE}")
+        return fallback
+
+    return cleaned_responses
+
+
+def load_birthday_responses():
+    fallback = [
+        "happy birthday {mention}!! officially one year more goated {cake} {snow}"
+    ]
+
+    try:
+        with open(BIRTHDAY_RESPONSES_FILE, "r", encoding="utf-8") as file:
+            responses = json.load(file)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"Failed to load birthday responses from {BIRTHDAY_RESPONSES_FILE}: {type(e).__name__}: {e}")
+        return fallback
+
+    if not isinstance(responses, list):
+        print(f"Birthday responses file must contain a JSON array: {BIRTHDAY_RESPONSES_FILE}")
+        return fallback
+
+    sample_values = {
+        "mention": "@birthday-user",
+        "cake": BIRTHDAY_CAKE,
+        "party": BIRTHDAY_PARTY,
+        "snow": BIRTHDAY_SNOW,
+        "bear": BIRTHDAY_BEAR,
+    }
+    cleaned_responses = []
+    for response in responses:
+        if not isinstance(response, str):
+            continue
+
+        response = response.strip()
+        if not response:
+            continue
+
+        try:
+            response.format(**sample_values)
+        except (KeyError, IndexError, ValueError) as e:
+            print(f"Skipping invalid birthday response {response!r}: {type(e).__name__}: {e}")
+            continue
+
+        cleaned_responses.append(response)
+
+    if not cleaned_responses:
+        print(f"Birthday responses file has no usable responses: {BIRTHDAY_RESPONSES_FILE}")
+        return fallback
+
+    return cleaned_responses
+
+
+WHIP_RESPONSES = load_whip_responses()
+BIRTHDAY_MESSAGES = load_birthday_responses()
+
+
+def pick_birthday_response():
+    available_responses = [
+        response for response in BIRTHDAY_MESSAGES
+        if response not in BIRTHDAY_RECENT_RESPONSES
+    ]
+
+    if not available_responses:
+        BIRTHDAY_RECENT_RESPONSES.clear()
+        available_responses = BIRTHDAY_MESSAGES
+
+    response = random.choice(available_responses)
+    BIRTHDAY_RECENT_RESPONSES.append(response)
+    return response
+
+
+async def get_birthday_response():
+    async with BIRTHDAY_LOCK:
+        return pick_birthday_response()
+
+
+def pick_whip_response():
+    available_responses = [
+        response for response in WHIP_RESPONSES
+        if response not in WHIP_RECENT_RESPONSES
+    ]
+
+    if not available_responses:
+        WHIP_RECENT_RESPONSES.clear()
+        available_responses = WHIP_RESPONSES
+
+    response = random.choice(available_responses)
+    WHIP_RECENT_RESPONSES.append(response)
+    return response
+
+
+async def get_whip_response():
+    async with WHIP_LOCK:
+        return pick_whip_response()
 
 '''
 # database
@@ -649,7 +776,7 @@ async def announce_birthdays_for_guild(guild):
         if was_birthday_announced(guild_id, user_id, now.year):
             continue
 
-        message = random.choice(BIRTHDAY_MESSAGES).format(
+        message = (await get_birthday_response()).format(
             mention=f"<@{user_id}>",
             cake=BIRTHDAY_CAKE,
             party=BIRTHDAY_PARTY,
@@ -863,6 +990,11 @@ async def coin(interaction: discord.Interaction):
 @bot.tree.command(name="dice", description="roll a dice")
 async def dice(interaction: discord.Interaction):
     await interaction.response.send_message(f"bot rolls: {random.randint(1, 6)}")
+
+# whip: /whip
+@bot.tree.command(name="whip", description="Punish the bot")
+async def whip(interaction: discord.Interaction):
+    await interaction.response.send_message(await get_whip_response())
 
 # random choice: /pick [choice1 choice2 choice3 ...]
 @bot.tree.command(name="pick", description="/pick [choice1, choice2, choice3, ...]")
